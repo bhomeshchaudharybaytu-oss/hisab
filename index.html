@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#1b1b1b">
+<title>Hisab</title>
+<style>
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f2f2f0;color:#1b1b1b;padding-bottom:80px}
+button,input{font:inherit}
+.top{background:#1b1b1b;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px;position:sticky;top:0;z-index:5}
+.top h1{font-size:20px;margin:0;flex:1}
+.seg{display:flex;border:2px solid #fff;border-radius:10px;overflow:hidden}
+.seg button{background:none;color:#fff;border:0;padding:7px 12px;font-weight:700}
+.seg button.on{background:#fff;color:#1b1b1b}
+.lo{background:none;border:0;color:#bbb;font-size:13px}
+.banner{background:#ffd400;text-align:center;font-weight:700;padding:5px;font-size:13px}
+.wrap{padding:12px;max-width:560px;margin:auto}
+.res{border-radius:16px;padding:22px 14px;text-align:center;color:#fff;margin-bottom:12px}
+.res small{display:block;font-size:15px;font-weight:600;opacity:.95}
+.res b{display:block;font-size:42px;margin-top:6px;line-height:1.1}
+.red{background:#ff0000}.green{background:#00b300}.zero{background:#555}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.card{background:#fff;border:2px solid #1b1b1b;border-radius:14px;padding:12px;position:relative}
+.card small{display:block;color:#555;font-size:13px}
+.card b{font-size:24px}
+.card .pen{position:absolute;right:6px;top:6px}
+.acts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.big{border:0;border-radius:12px;padding:16px 8px;font-size:17px;font-weight:700;color:#fff;background:#1b1b1b}
+.big.s{background:#00b300}.big.e{background:#ff0000}
+h2{font-size:16px;margin:16px 0 8px}
+.row{background:#fff;border:1px solid #ccc;border-radius:12px;padding:10px;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.row .m{flex:1;min-width:0}
+.row .m b{display:block;font-size:15px}
+.row .m span{font-size:12px;color:#555}
+.row .a{font-weight:800;font-size:15px;white-space:nowrap}
+.g{color:#00a000}.r{color:#ff0000}
+.ic{background:#eee;border:0;border-radius:8px;padding:8px 9px;font-size:16px}
+.nav{position:fixed;bottom:0;left:0;right:0;background:#1b1b1b;display:flex;padding-bottom:env(safe-area-inset-bottom,0)}
+.nav button{flex:1;background:none;border:0;color:#aaa;padding:14px;font-size:16px;font-weight:700}
+.nav button.on{color:#fff;box-shadow:inset 0 3px #fff}
+.empty{text-align:center;color:#777;padding:14px;font-size:14px}
+.sum{background:#fff;border:2px solid #1b1b1b;border-radius:14px;padding:12px;margin-bottom:12px}
+.sum div{display:flex;justify-content:space-between;padding:3px 0;font-size:15px}
+.hd{display:flex;gap:8px;margin-bottom:12px}
+.hd input{flex:1;padding:12px;border:2px solid #1b1b1b;border-radius:10px;background:#fff}
+.hd button{padding:0 14px;border:2px solid #1b1b1b;border-radius:10px;background:#fff;font-weight:700}
+.hd button.on{background:#1b1b1b;color:#fff}
+#sheet{position:fixed;inset:0;background:rgba(0,0,0,.55);display:none;z-index:20;align-items:flex-end}
+#sheet.show{display:flex}
+.box{background:#fff;width:100%;max-height:92vh;overflow:auto;border-radius:20px 20px 0 0;padding:16px;max-width:560px;margin:auto}
+.box h3{margin:0 0 10px;font-size:19px}
+label{display:block;font-weight:700;font-size:14px;margin:12px 0 6px}
+input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font-size:17px}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{border:2px solid #1b1b1b;background:#fff;border-radius:10px;padding:11px 14px;font-weight:700;font-size:16px}
+.chip.on{background:#1b1b1b;color:#fff}
+.pay{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.pay .chip{padding:16px;font-size:18px;text-align:center}
+.tot{text-align:center;font-size:30px;font-weight:800;margin:14px 0 0}
+.oth{background:none;border:0;text-decoration:underline;color:#555;margin-top:10px;font-size:14px}
+.save{width:100%;margin-top:16px;padding:16px;border:0;border-radius:12px;background:#00b300;color:#fff;font-size:18px;font-weight:800}
+.cancel{width:100%;margin-top:8px;padding:12px;border:0;background:none;font-size:15px;color:#555}
+.login{max-width:360px;margin:12vh auto;padding:20px}
+.login h1{text-align:center}
+.err{color:#ff0000;font-size:14px;min-height:20px;margin-top:10px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="sheet"><div class="box" id="box"></div></div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,addDoc,setDoc,doc,deleteDoc,onSnapshot,writeBatch} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const app=initializeApp({
+  apiKey:"AIzaSyBPZgNn3yagJruuaisPe-My7foN6_7eo2k",
+  authDomain:"hisab-2cb5f.firebaseapp.com",
+  projectId:"hisab-2cb5f",
+  storageBucket:"hisab-2cb5f.firebasestorage.app",
+  messagingSenderId:"151575301734",
+  appId:"1:151575301734:web:f72501ad1a61d65fabe7a7"
+});
+const auth=getAuth(app);
+const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
+const col=collection(db,'tx');
+
+let user=null,tx=[],mode='final',tab='home',hdate=null,f=null,unsub=null,loginErr='';
+
+/* ---------- helpers ---------- */
+const $=s=>document.querySelector(s);
+function now(){
+  const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()).reduce((a,x)=>(a[x.type]=x.value,a),{});
+  return {d:`${p.year}-${p.month}-${p.day}`,t:`${p.hour==='24'?'00':p.hour}:${p.minute}`};
+}
+const R=n=>Math.round((+n||0)*100)/100;
+const fm=n=>'₹'+R(n).toLocaleString('en-IN',{maximumFractionDigits:2});
+const sg=n=>(n>0?'+':n<0?'−':'')+Math.abs(R(n)).toLocaleString('en-IN');
+const fd=d=>d.split('-').reverse().join('-');
+const t12=t=>{let[h,m]=t.split(':');h=+h;const a=h>=12?'PM':'AM';h=h%12||12;return `${h}:${m} ${a}`};
+const payTxt=e=>e.cash&&e.online?`Cash ${fm(e.cash)} + Online ${fm(e.online)}`:e.cash?'💵 Cash':'🏦 Online';
+
+/* ---------- calculations ---------- */
+function calc(l){
+  const r={sale:0,cash:0,online:0,bkt:0,loL:0,exp:0,by:{},stockIn:0};
+  for(const e of l){
+    if(e.type==='sale'){r.sale+=e.total;r.cash+=e.cash;r.online+=e.online;if(e.kind==='BKT')r.bkt+=e.qty;else r.loL+=e.litres}
+    else if(e.type==='expense'||e.type==='rough'){const c=e.type==='rough'?'Personal (rough)':e.cat;r.exp+=e.amount;r.by[c]=(r.by[c]||0)+e.amount;r.cash-=e.cash;r.online-=e.online}
+    else if(e.type==='adjust'){r.cash+=e.cash;r.online+=e.online}
+    else if(e.type==='stock'){r.stockIn+=e.qty}
+  }
+  r.result=R(r.sale-(r.cash+r.online+r.exp));
+  return r;
+}
+const stockNow=()=>{const a=calc(tx);return R(a.stockIn-a.bkt)};
+
+/* ---------- rendering ---------- */
+function rowHTML(e){
+  const tm=e.time?' • '+t12(e.time):'';
+  let title,sub='',amt='',cls='';
+  if(e.type==='sale'){title=e.kind==='BKT'?`🪣 BKT × ${e.qty} @ ${fm(e.price)}`:`🛢️ Loose ${e.litres} L @ ${fm(e.rate)}`;sub=payTxt(e);amt='+'+fm(e.total);cls='g'}
+  else if(e.type==='expense'){title=e.cat;sub=(e.note?e.note+' • ':'')+payTxt(e);amt='−'+fm(e.amount);cls='r'}
+  else if(e.type==='rough'){title='📝 '+(e.note||'Personal');sub=payTxt(e);amt='−'+fm(e.amount);cls='r'}
+  else if(e.type==='adjust'){title='⇄ Adjust';sub=`Cash ${sg(e.cash)} • Online ${sg(e.online)}`}
+  else{title=`📦 Stock ${sg(e.qty)} BKT`;sub=e.note||''}
+  const btn=mode==='edit'?`<button class="ic" data-act="edit" data-id="${e.id}">✏️</button><button class="ic" data-act="del" data-id="${e.id}">🗑️</button>`:'';
+  return `<div class="row"><div class="m"><b>${title}</b><span>${fd(e.date)}${tm}${sub?' • '+sub:''}</span></div><div class="a ${cls}">${amt}</div>${btn}</div>`;
+}
+const sortDesc=l=>[...l].sort((a,b)=>(b.date.localeCompare(a.date))||((b.ms||0)-(a.ms||0)));
+const list=l=>l.length?sortDesc(l).map(rowHTML).join(''):'<div class="empty">No entries</div>';
+
+function resultCard(r,label){
+  const v=r.result;
+  if(v>0)return `<div class="res red"><small>${label}</small><b>YOU OWE OWNER<br>${fm(v)}</b></div>`;
+  if(v<0)return `<div class="res green"><small>${label}</small><b>OWNER OWES YOU<br>${fm(-v)}</b></div>`;
+  return `<div class="res zero"><small>${label}</small><b>ALL CLEAR<br>₹0</b></div>`;
+}
+
+function render(){
+  const a=$('#app');
+  if(!user){
+    a.innerHTML=`<div class="login"><h1>Hisab</h1><label>Email</label><input class="f" id="em" type="email" autocomplete="username"><label>Password</label><input class="f" id="pw" type="password" autocomplete="current-password"><button class="save" data-act="login" style="background:#1b1b1b">Login</button><div class="err">${loginErr}</div></div>`;
+    return;
+  }
+  const head=`<div class="top"><h1>Hisab</h1><div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div><button class="lo" data-act="logout">Logout</button></div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}`;
+  const nav=`<div class="nav"><button data-act="tab" data-v="home" class="${tab==='home'?'on':''}">🏠 Home</button><button data-act="tab" data-v="hist" class="${tab==='hist'?'on':''}">📅 History</button></div>`;
+  a.innerHTML=head+`<div class="wrap">${tab==='home'?home():history()}</div>`+nav;
+}
+
+function home(){
+  const all=calc(tx),t=now().d,today=calc(tx.filter(e=>e.date===t));
+  const pen=(act)=>mode==='edit'?`<button class="ic pen" data-act="${act}">✏️</button>`:'';
+  const rough=tx.filter(e=>e.type==='rough');
+  const rt=rough.reduce((s,e)=>s+e.amount,0);
+  return resultCard(all,'Final balance (all time)')+
+  `<div class="grid">
+    <div class="card"><small>Today's sale</small><b>${fm(today.sale)}</b></div>
+    <div class="card"><small>BKT stock</small><b>${stockNow()}</b>${pen('stockfix')}</div>
+    <div class="card"><small>💵 Available cash</small><b>${fm(all.cash)}</b>${pen('adj')}</div>
+    <div class="card"><small>🏦 Available online</small><b>${fm(all.online)}</b>${pen('adj')}</div>
+  </div>
+  <div class="acts">
+    <button class="big s" data-act="sale">+ Sale</button>
+    <button class="big e" data-act="exp">− Expense</button>
+    <button class="big" data-act="stock">+ Add Buckets</button>
+    <button class="big" data-act="adj">⇄ Adjust Cash/Online</button>
+  </div>
+  <h2>Personal rough: ${fm(rt)}</h2>
+  ${list(rough)}
+  ${rough.length?'<button class="big" style="width:100%;margin-top:4px" data-act="submitp">Submit Personal</button>':''}
+  <h2>Today's entries</h2>
+  ${list(tx.filter(e=>e.date===t&&e.type!=='rough'))}`;
+}
+
+function history(){
+  const all=hdate==='all';
+  const d=hdate||now().d;
+  const l=all?tx:tx.filter(e=>e.date===d);
+  const r=calc(l);
+  const by=Object.keys(r.by).map(k=>`<div><span>${k}</span><b>${fm(r.by[k])}</b></div>`).join('');
+  return `<div class="hd"><input type="date" id="hd" value="${all?'':d}"><button data-act="hall" class="${all?'on':''}">Total</button></div>`+
+  resultCard(r,all?'Total result':'Result for '+fd(d))+
+  `<div class="sum">
+    <div><span>Total sale</span><b>${fm(r.sale)}</b></div>
+    <div><span>BKT sold</span><b>${r.bkt}</b></div>
+    <div><span>Loose sold</span><b>${R(r.loL)} L</b></div>
+    <div><span>Cash</span><b>${fm(r.cash)}</b></div>
+    <div><span>Online</span><b>${fm(r.online)}</b></div>
+    ${by}
+    <div><span>Total expenses</span><b>${fm(r.exp)}</b></div>
+  </div>`+list(l);
+}
+
+/* ---------- sheet forms ---------- */
+const chip=(k,v,label)=>`<button class="chip${f[k]===v?' on':''}" data-set="${k}" data-v="${v}">${label??v}</button>`;
+const dateField=()=>`<label>Date</label><input class="f" type="date" data-in="date" value="${f.date}">`;
+const payBlock=()=>`<label>Payment</label><div class="pay">${chip('pay','online','🏦 Online')}${chip('pay','cash','💵 Cash')}</div>
+<button class="oth" data-set="pay" data-v="split">Other (part cash, part online)</button>
+${f.pay==='split'?`<label>Cash part (₹) — rest is Online</label><input class="f" type="number" step="any" data-in="cashAmt" value="${f.cashAmt??''}">`:''}`;
+const foot=(txt)=>`<button class="save" data-act="save">${txt}</button><button class="cancel" data-act="close">Cancel</button>`;
+
+function draw(){
+  const box=$('#box'),st=box.scrollTop;
+  let h='';
+  if(f.k==='sale'){
+    const rates=[];for(let i=40;i<=65;i++)rates.push(i);
+    const prices=[];for(let i=1200;i<=1700;i+=50)prices.push(i);
+    h=`<h3>${f.id?'Edit Sale':'New Sale'}</h3>${dateField()}
+    <label>Item</label><div class="chips">${chip('kind','BKT','🪣 BKT')}${chip('kind','LOOSE','🛢️ Loose')}</div>`;
+    if(f.kind==='BKT')h+=`<label>Quantity</label><div class="chips">${[1,2,3].map(n=>chip('qty',n)).join('')}</div><label>Price</label><div class="chips">${prices.map(n=>chip('price',n)).join('')}</div>`;
+    if(f.kind==='LOOSE')h+=`<label>Litres</label><input class="f" type="number" step="any" data-in="litres" value="${f.litres??''}"><label>Rate per litre</label><div class="chips">${rates.map(n=>chip('rate',n)).join('')}</div>`;
+    h+=`<div class="tot" id="tot">${fm(saleTotal())}</div>${payBlock()}${foot(f.id?'Save changes':'Add sale')}`;
+  }
+  if(f.k==='exp'){
+    const p=f.cat==='Personal';
+    h=`<h3>${f.id?'Edit Expense':'New Expense'}</h3>${dateField()}
+    <label>Type</label><div class="chips">${['Personal','Petrol','Send to Owner','Others'].map(c=>chip('cat',c)).join('')}</div>
+    <label>Amount (₹)</label><input class="f" type="number" step="any" data-in="amount" value="${f.amount??''}">
+    ${p?`<label>Item</label><div class="chips">${['Tea','Cold drink','Snacks','Cigarette','Food'].map(c=>`<button class="chip" data-fill="${c}">${c}</button>`).join('')}</div>`:''}
+    <label>${p?'Item name':'Note (what for)'}</label><input class="f" type="text" data-in="note" value="${(f.note||'').replace(/"/g,'&quot;')}">
+    ${payBlock()}${foot(f.id?'Save changes':'Add expense')}`;
+  }
+  if(f.k==='stock'){
+    const act=f.mode==='actual';
+    h=`<h3>${f.id?'Edit Stock Entry':act?'Correct BKT Stock':'Add Buckets'}</h3>${dateField()}
+    <label>${act?'Actual buckets in stock now':'Buckets received (negative to reduce)'}</label><input class="f" type="number" step="any" data-in="qty" value="${f.qty??''}">
+    ${act?'':`<label>Note (optional)</label><input class="f" type="text" data-in="note" value="${(f.note||'').replace(/"/g,'&quot;')}">`}
+    ${foot('Save')}`;
+  }
+  if(f.k==='adj'){
+    const act=f.mode==='actual';
+    h=`<h3>${f.id?'Edit Adjustment':'Adjust Cash / Online'}</h3>${dateField()}
+    <label>${act?'Actual cash now (₹)':'Cash change (+/−)'}</label><input class="f" type="number" step="any" data-in="c" value="${f.c??''}">
+    <label>${act?'Actual online now (₹)':'Online change (+/−)'}</label><input class="f" type="number" step="any" data-in="o" value="${f.o??''}">
+    ${foot('Save')}`;
+  }
+  box.innerHTML=h;box.scrollTop=st;
+  $('#sheet').classList.add('show');
+}
+const saleTotal=()=>f.kind==='BKT'?R((f.qty||0)*(f.price||0)):f.kind==='LOOSE'?R((+f.litres||0)*(f.rate||0)):0;
+const closeSheet=()=>{$('#sheet').classList.remove('show');f=null};
+
+function base(e){const n=now();return e?{id:e.id,date:e.date,time:e.time||'',ms:e.ms||Date.now()}:{date:n.d,time:null,ms:Date.now()}}
+function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BKT'?e.qty:'',price:e&&e.kind==='BKT'?e.price:'',litres:e&&e.kind==='LOOSE'?e.litres:'',rate:e&&e.kind==='LOOSE'?e.rate:'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
+function openExp(e){f={k:'exp',...base(e),cat:e?(e.type==='rough'?'Personal':e.cat):'',amount:e?e.amount:'',note:e?e.note||'':'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
+function openStock(e,m){f={k:'stock',...base(e),mode:e?'add':(m||'add'),qty:e?e.qty:'',note:e?e.note||'':''};draw()}
+function openAdj(e){const c=calc(tx);f={k:'adj',...base(e),mode:e?'delta':'actual',c:e?e.cash:R(c.cash),o:e?e.online:R(c.online)};draw()}
+
+function stamp(){ // date + IST time + order
+  const n=now();
+  const o={date:f.date,ms:f.ms};
+  o.time=f.id?(f.time||''):(f.date===n.d?n.t:'');
+  return o;
+}
+function put(data){
+  const p=f.id?setDoc(doc(db,'tx',f.id),data):addDoc(col,data);
+  p.catch(e=>alert('Save failed: '+e.message));
+  closeSheet();
+}
+function split(total){
+  if(f.pay==='cash')return{cash:total,online:0};
+  if(f.pay==='online')return{cash:0,online:total};
+  const c=Math.min(Math.max(R(f.cashAmt),0),total);return{cash:c,online:R(total-c)};
+}
+
+function save(){
+  if(!f.date)return alert('Select a date');
+  if(f.k==='sale'){
+    const total=saleTotal();
+    if(!f.kind)return alert('Choose BKT or Loose');
+    if(f.kind==='BKT'&&(!f.qty||!f.price))return alert('Select quantity and price');
+    if(f.kind==='LOOSE'&&(!(+f.litres>0)||!f.rate))return alert('Enter litres and select rate');
+    if(!f.pay)return alert('Select Online or Cash');
+    const s=split(total);
+    put({type:'sale',...stamp(),kind:f.kind,qty:f.kind==='BKT'?f.qty:0,price:f.kind==='BKT'?f.price:0,litres:f.kind==='LOOSE'?R(f.litres):0,rate:f.kind==='LOOSE'?f.rate:0,total,cash:s.cash,online:s.online});
+  }
+  if(f.k==='exp'){
+    const amt=R(f.amount);
+    if(!f.cat)return alert('Select expense type');
+    if(!(amt>0))return alert('Enter amount');
+    if(!f.pay)return alert('Select Online or Cash');
+    const s=split(amt);
+    put({type:f.cat==='Personal'?'rough':'expense',...stamp(),cat:f.cat,amount:amt,note:(f.note||'').trim(),cash:s.cash,online:s.online});
+  }
+  if(f.k==='stock'){
+    if(f.qty===''||isNaN(+f.qty))return alert('Enter buckets');
+    const q=f.mode==='actual'?R(+f.qty-stockNow()):R(f.qty);
+    if(q===0)return alert('Nothing to change');
+    put({type:'stock',...stamp(),qty:q,note:f.mode==='actual'?'Stock correction':(f.note||'').trim()});
+  }
+  if(f.k==='adj'){
+    const cur=calc(tx);
+    const c=f.mode==='actual'?R((+f.c||0)-cur.cash):R(f.c),o=f.mode==='actual'?R((+f.o||0)-cur.online):R(f.o);
+    if(!c&&!o)return alert('Nothing to change');
+    put({type:'adjust',...stamp(),cash:c,online:o});
+  }
+}
+
+async function submitPersonal(){
+  const rough=tx.filter(e=>e.type==='rough');
+  if(!rough.length)return;
+  if(!confirm('Submit personal expenses as one final entry?'))return;
+  const c=R(rough.reduce((s,e)=>s+e.cash,0)),o=R(rough.reduce((s,e)=>s+e.online,0));
+  const note=sortDesc(rough).reverse().map(e=>`${e.note||'Item'} ${R(e.amount)}`).join(', ');
+  const n=now(),b=writeBatch(db);
+  rough.forEach(e=>b.delete(doc(db,'tx',e.id)));
+  b.set(doc(col),{type:'expense',cat:'Personal',date:n.d,time:n.t,ms:Date.now(),amount:R(c+o),note,cash:c,online:o});
+  b.commit().catch(e=>alert('Failed: '+e.message));
+}
+
+/* ---------- events ---------- */
+document.addEventListener('click',async ev=>{
+  const b=ev.target.closest('button');if(!b)return;
+  const d=b.dataset;
+  if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;draw();return}
+  if(d.fill&&f){f.note=d.fill;draw();return}
+  switch(d.act){
+    case'login':{
+      loginErr='';
+      try{await signInWithEmailAndPassword(auth,$('#em').value.trim(),$('#pw').value)}
+      catch(e){loginErr='Wrong email or password';render()}
+      break}
+    case'logout':signOut(auth);break;
+    case'mode':mode=d.v;render();break;
+    case'tab':tab=d.v;render();break;
+    case'hall':hdate='all';render();break;
+    case'sale':openSale();break;
+    case'exp':openExp();break;
+    case'stock':openStock();break;
+    case'stockfix':openStock(null,'actual');break;
+    case'adj':openAdj();break;
+    case'close':closeSheet();break;
+    case'save':save();break;
+    case'submitp':submitPersonal();break;
+    case'edit':{const e=tx.find(x=>x.id===d.id);if(!e)break;
+      if(e.type==='sale')openSale(e);else if(e.type==='expense'||e.type==='rough')openExp(e);else if(e.type==='stock')openStock(e);else openAdj(e);break}
+    case'del':if(confirm('Delete this entry?'))deleteDoc(doc(db,'tx',d.id)).catch(e=>alert('Failed: '+e.message));break;
+  }
+});
+document.addEventListener('input',ev=>{
+  const t=ev.target;
+  if(t.id==='hd'){hdate=t.value||null;render();return}
+  if(t.dataset.in&&f){
+    f[t.dataset.in]=t.type==='number'?t.value:t.value;
+    if(f.k==='sale'&&$('#tot'))$('#tot').textContent=fm(saleTotal());
+  }
+});
+$('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet()});
+
+/* ---------- auth + data ---------- */
+onAuthStateChanged(auth,u=>{
+  user=u;
+  if(unsub){unsub();unsub=null}
+  if(u){
+    unsub=onSnapshot(col,s=>{tx=s.docs.map(d=>({...d.data(),id:d.id}));render()},e=>alert('Data error: '+e.message));
+  }else{tx=[]}
+  render();
+});
+render();
+</script>
+</body>
+</html>
