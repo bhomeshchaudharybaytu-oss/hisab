@@ -87,6 +87,12 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 .dt{position:relative;display:block}
 .dt span{display:block;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font-size:17px;font-weight:700;background:#fff}
 .dt input.dp{position:absolute;inset:0;width:100%;height:100%;opacity:0;padding:0;border:0}
+.four{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:6px}
+.mini{border-radius:12px;padding:8px 4px;color:#fff;text-align:center;display:flex;flex-direction:column;justify-content:space-between;min-height:68px}
+.mini small{font-size:10.5px;font-weight:700;line-height:1.15;opacity:.95}
+.mini b{font-size:13.5px;margin-top:4px;word-break:break-all;line-height:1.1}
+.rl{text-align:center;font-size:12px;color:#555;font-weight:700;margin-bottom:12px}
+.gear{font-size:20px;color:#fff}
 </style>
 </head>
 <body>
@@ -174,6 +180,31 @@ function effect(newList){
   return `<div class="cfe"><p>After this:</p>${ch||'<div><span>Balances unchanged</span></div>'}</div>`;
 }
 
+/* ---------- totals period setting ---------- */
+let cfg={mode:'all',from:'',to:''};
+try{const c=JSON.parse(localStorage.getItem('hisabCfg')||'null');if(c&&c.mode)cfg=c}catch(e){}
+function rangeOf(){
+  const t=now().d;
+  if(cfg.mode==='today')return[t,t];
+  if(cfg.mode==='month')return[t.slice(0,8)+'01',t];
+  if(cfg.mode==='custom')return[cfg.from||'0000-01-01',cfg.to||'9999-12-31'];
+  return null;
+}
+function rangeLabel(){
+  const r=rangeOf();
+  if(!r)return 'All time';
+  if(cfg.mode==='today')return 'Today ('+fd(r[0])+')';
+  if(cfg.mode==='month')return 'This month ('+fd(r[0])+' to '+fd(r[1])+')';
+  return (cfg.from?fd(cfg.from):'Start')+' to '+(cfg.to?fd(cfg.to):'Today');
+}
+function fourCards(){
+  const r=rangeOf(),l=r?tx.filter(e=>e.date>=r[0]&&e.date<=r[1]):tx;
+  const c=calc(l);
+  const owner=R(l.filter(e=>e.type==='expense'&&e.cat==='Send to Owner').reduce((a,e)=>a+e.amount,0));
+  const m=(bg,t,v)=>`<div class="mini" style="background:${bg}"><small>${t}</small><b>${fm(v)}</b></div>`;
+  return `<div class="four">${m('#1565c0','Total sale',c.sale)}${m('#ef6c00','Total expense',R(c.exp-owner))}${m('#6a1b9a','Total owner pay',owner)}${m('#00838f','Available balance',R(c.cash+c.online))}</div><div class="rl">📅 ${rangeLabel()}</div>`;
+}
+
 /* ---------- rendering ---------- */
 function rowHTML(e){
   const tm=e.time?' • '+t12(e.time):'';
@@ -203,7 +234,7 @@ function render(){
     a.innerHTML=`<div class="login"><h1>Hisab</h1><label>Email</label><input class="f" id="em" type="email" autocomplete="username"><label>Password</label><input class="f" id="pw" type="password" autocomplete="current-password"><button class="save" data-act="login" style="background:#1b1b1b">Login</button><div class="err">${loginErr}</div></div>`;
     return;
   }
-  const head=`<div class="sticky"><div class="top"><h1>Hisab</h1><div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div><button class="lo" data-act="logout">Logout</button></div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
+  const head=`<div class="sticky"><div class="top"><h1>Hisab</h1><div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div><button class="lo" data-act="logout">Logout</button><button class="lo gear" data-act="cfg">⚙️</button></div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
   const nav=`<div class="nav"><button data-act="tab" data-v="home" class="${tab==='home'?'on':''}">🏠 Home</button><button data-act="tab" data-v="hist" class="${tab==='hist'?'on':''}">📅 History</button></div>`;
   a.innerHTML=head+`<div class="wrap">${tab==='home'?home():history()}</div>`+nav;
 }
@@ -213,7 +244,7 @@ function home(){
   const pen=(act)=>mode==='edit'?`<button class="ic pen" data-act="${act}">✏️</button>`:'';
   const rough=tx.filter(e=>e.type==='rough');
   const rt=rough.reduce((s,e)=>s+e.amount,0);
-  return resultCard(all,'Final balance (all time)')+
+  return fourCards()+resultCard(all,'Final balance (all time)')+
   `<div class="grid">
     <div class="card"><small>Today's sale</small><b>${fm(today.sale)}</b></div>
     <div class="card"><small>BKT stock</small><b>${stockNow()}</b>${pen('stockfix')}</div>
@@ -288,7 +319,8 @@ function history(){
 
 /* ---------- sheet forms ---------- */
 const chip=(k,v,label)=>`<button class="chip${f[k]===v?' on':''}" data-set="${k}" data-v="${v}">${label??v}</button>`;
-const dateField=()=>`<label>Date</label><div class="dt"><span id="dtx">${fd(f.date)}</span><input class="dp" type="date" data-in="date" value="${f.date}"></div>`;
+const dtBox=(k,v)=>`<div class="dt"><span id="dt_${k}">${v?fd(v):'Select date'}</span><input class="dp" type="date" data-in="${k}" value="${v||''}"></div>`;
+const dateField=()=>`<label>Date</label>${dtBox('date',f.date)}`;
 const payBlock=()=>`<label>Payment</label><div class="pay">${chip('pay','online','🏦 Online')}${chip('pay','cash','💵 Cash')}</div>
 <button class="oth" data-set="pay" data-v="split">Other (part cash, part online)</button>
 ${f.pay==='split'?`<label>Cash part (₹) — rest is Online</label><input class="f" type="number" step="any" data-in="cashAmt" value="${f.cashAmt??''}">`:''}`;
@@ -328,6 +360,12 @@ function draw(){
     <label>${act?'Actual online now (₹)':'Online change (+/−)'}</label><input class="f" type="number" step="any" data-in="o" value="${f.o??''}">
     ${foot('Save')}`;
   }
+  if(f.k==='cfg'){
+    h=`<h3>Settings</h3><label>Period for the 4 top cards</label>
+    <div class="chips">${chip('mode','all','All time')}${chip('mode','today','Today')}${chip('mode','month','This month')}${chip('mode','custom','Custom dates')}</div>
+    ${f.mode==='custom'?`<label>From date</label>${dtBox('from',f.from)}<label>To date (empty = today)</label>${dtBox('to',f.to)}`:''}
+    ${foot('Save settings')}`;
+  }
   box.innerHTML=h;box.scrollTop=st;
   $('#sheet').classList.add('show');
 }
@@ -338,6 +376,14 @@ function base(e){const n=now();return e?{id:e.id,date:e.date,time:e.time||'',ms:
 function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BKT'?e.qty:'',price:e&&e.kind==='BKT'?e.price:'',litres:e&&e.kind==='LOOSE'?e.litres:'',rate:e&&e.kind==='LOOSE'?e.rate:'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
 function openExp(e){f={k:'exp',...base(e),cat:e?(e.type==='rough'?'Personal':e.cat):'',amount:e?e.amount:'',note:e?e.note||'':'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
 function openStock(e,m){f={k:'stock',...base(e),mode:e?'add':(m||'add'),qty:e?e.qty:'',note:e?e.note||'':''};draw()}
+function openCfg(){f={k:'cfg',mode:cfg.mode,from:cfg.from,to:cfg.to};draw()}
+function saveCfg(){
+  if(f.mode==='custom'&&!f.from&&!f.to)return alert('Select at least a From or To date');
+  if(f.mode==='custom'&&f.from&&f.to&&f.from>f.to)return alert('From date is after To date');
+  cfg={mode:f.mode,from:f.mode==='custom'?f.from:'',to:f.mode==='custom'?f.to:''};
+  try{localStorage.setItem('hisabCfg',JSON.stringify(cfg))}catch(e){}
+  closeSheet();render();
+}
 function openAdj(e){const c=calc(tx);f={k:'adj',...base(e),mode:e?'delta':'actual',c:e?e.cash:R(c.cash),o:e?e.online:R(c.online)};draw()}
 
 function stamp(){ // date + IST time + order
@@ -436,7 +482,8 @@ document.addEventListener('click',async ev=>{
     case'stockfix':openStock(null,'actual');break;
     case'adj':openAdj();break;
     case'close':closeSheet();break;
-    case'save':save();break;
+    case'save':if(f&&f.k==='cfg')saveCfg();else save();break;
+    case'cfg':openCfg();break;
     case'submitp':submitPersonal();break;
     case'edit':{const e=tx.find(x=>x.id===d.id);if(!e)break;
       if(e.type==='sale')openSale(e);else if(e.type==='expense'||e.type==='rough')openExp(e);else if(e.type==='stock')openStock(e);else openAdj(e);break}
@@ -449,7 +496,7 @@ document.addEventListener('input',ev=>{
   const t=ev.target;
   if(t.id==='hd'){hdate=t.value||null;render();return}
   if(t.dataset.in&&f){
-    if(t.dataset.in==='date'&&$('#dtx'))$('#dtx').textContent=t.value?fd(t.value):'Select date';
+    if(t.type==='date'){const sp=document.getElementById('dt_'+t.dataset.in);if(sp)sp.textContent=t.value?fd(t.value):'Select date'}
     f[t.dataset.in]=t.type==='number'?t.value:t.value;
     if(f.k==='sale'&&$('#tot'))$('#tot').textContent=fm(saleTotal());
   }
