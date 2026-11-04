@@ -83,6 +83,9 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 .gh{display:flex;justify-content:space-between;gap:8px;font-weight:800;font-size:14px;margin:14px 0 6px;padding:7px 10px;background:#1b1b1b;color:#fff;border-radius:8px}
 .fc{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .fc .chip{padding:8px 12px;font-size:14px}
+.dt{position:relative;display:block}
+.dt span{display:block;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font-size:17px;font-weight:700;background:#fff}
+.dt input.dp{position:absolute;inset:0;width:100%;height:100%;opacity:0;padding:0;border:0}
 </style>
 </head>
 <body>
@@ -243,7 +246,7 @@ function groupList(l,all,kind){
 function history(){
   const all=hdate==='all',d=hdate||now().d;
   const l=all?tx:tx.filter(e=>e.date===d);
-  const bar=`<div class="hd"><input type="date" id="hd" value="${all?'':d}"><button data-act="hall" class="${all?'on':''}">Total</button></div>`;
+  const bar=`<div class="hd"><div class="dt" style="flex:1"><span>${all?'Select date':fd(d)}</span><input class="dp" type="date" id="hd" value="${all?'':d}"></div><button data-act="hall" class="${all?'on':''}">Total</button></div>`;
   const chips=o=>`<div class="fc">${o.map(([v,t])=>`<button class="chip${hf[htab]===v?' on':''}" data-act="hf" data-v="${v}">${t}</button>`).join('')}</div>`;
   const row=(a,b,c='')=>`<div><span>${a}</span><b class="${c}">${b}</b></div>`;
   const when=all?'Total':fd(d);
@@ -284,7 +287,7 @@ function history(){
 
 /* ---------- sheet forms ---------- */
 const chip=(k,v,label)=>`<button class="chip${f[k]===v?' on':''}" data-set="${k}" data-v="${v}">${label??v}</button>`;
-const dateField=()=>`<label>Date</label><input class="f" type="date" data-in="date" value="${f.date}">`;
+const dateField=()=>`<label>Date</label><div class="dt"><span id="dtx">${fd(f.date)}</span><input class="dp" type="date" data-in="date" value="${f.date}"></div>`;
 const payBlock=()=>`<label>Payment</label><div class="pay">${chip('pay','online','🏦 Online')}${chip('pay','cash','💵 Cash')}</div>
 <button class="oth" data-set="pay" data-v="split">Other (part cash, part online)</button>
 ${f.pay==='split'?`<label>Cash part (₹) — rest is Online</label><input class="f" type="number" step="any" data-in="cashAmt" value="${f.cashAmt??''}">`:''}`;
@@ -445,6 +448,7 @@ document.addEventListener('input',ev=>{
   const t=ev.target;
   if(t.id==='hd'){hdate=t.value||null;render();return}
   if(t.dataset.in&&f){
+    if(t.dataset.in==='date'&&$('#dtx'))$('#dtx').textContent=t.value?fd(t.value):'Select date';
     f[t.dataset.in]=t.type==='number'?t.value:t.value;
     if(f.k==='sale'&&$('#tot'))$('#tot').textContent=fm(saleTotal());
   }
