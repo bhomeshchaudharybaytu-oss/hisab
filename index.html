@@ -337,7 +337,7 @@ function draw(){
     <label>Item</label><div class="chips">${chip('kind','BKT','🪣 BKT')}${chip('kind','LOOSE','🛢️ Loose')}</div>`;
     if(f.kind==='BKT')h+=`<label>Quantity</label><div class="chips">${[1,2,3].map(n=>chip('qty',n)).join('')}</div><label>Price</label><div class="chips">${prices.map(n=>chip('price',n)).join('')}</div>`;
     if(f.kind==='LOOSE')h+=`<label>Litres</label><input class="f" type="number" step="any" data-in="litres" value="${f.litres??''}"><label>Rate per litre</label><div class="chips">${rates.map(n=>chip('rate',n)).join('')}</div><label>Amount ₹ (auto-filled, you can edit)</label><input class="f" id="amtin" type="number" step="any" data-in="amt" value="${f.amt??''}"><div class="hint" id="auto">Calculated: ${fm(autoTotal())}</div>`;
-    h+=`<div class="tot" id="tot">${fm(saleTotal())}</div>${payBlock()}${foot(f.id?'Save changes':'Add sale')}`;
+    h+=`${f.kind==='LOOSE'?'':`<div class="tot" id="tot">${fm(saleTotal())}</div>`}${payBlock()}${foot(f.id?'Save changes':'Add sale')}`;
   }
   if(f.k==='exp'){
     const p=f.cat==='Personal';
