@@ -290,6 +290,7 @@ function home(){
     <button class="big" data-act="adj">⇄ Adjust Cash/Online</button>
   </div>
   <h2>Personal rough: ${fm(rt)}</h2>
+  <div class="rl" style="text-align:left">Auto-submits as one entry per day (11:30 PM)</div>
   ${list(rough)}
   ${rough.length?'<button class="big" style="width:100%;margin-top:4px" data-act="submitp">Submit Personal</button>':''}
   <h2>Today's entries</h2>
@@ -488,17 +489,45 @@ function save(){
   }
 }
 
+let settling=false,fresh=false;
+// Merge rough entries into ONE Personal expense per day (adds to the day's existing Personal entry if present)
+async function settleDates(list,timeFor){
+  const days={};list.forEach(e=>(days[e.date]=days[e.date]||[]).push(e));
+  const b=writeBatch(db);
+  for(const d of Object.keys(days)){
+    const r=days[d];
+    const c=R(r.reduce((a,e)=>a+e.cash,0)),o=R(r.reduce((a,e)=>a+e.online,0));
+    const note=[...r].sort((a,b)=>(a.ms||0)-(b.ms||0)).map(e=>`${e.note||'Item'} ${R(e.amount)}`).join(', ');
+    r.forEach(e=>b.delete(doc(db,'tx',e.id)));
+    const ex=tx.find(e=>e.type==='expense'&&e.cat==='Personal'&&e.date===d);
+    if(ex)b.update(doc(db,'tx',ex.id),{amount:R(ex.amount+c+o),cash:R(ex.cash+c),online:R(ex.online+o),note:[ex.note,note].filter(Boolean).join(', ')});
+    else b.set(doc(col),{type:'expense',cat:'Personal',date:d,time:timeFor(d),ms:Date.now(),amount:R(c+o),note,cash:c,online:o});
+  }
+  await b.commit();
+}
+// Auto: past days always, today after 23:30 (runs when the app is open)
+async function autoSettle(){
+  if(!user||settling||!fresh)return;
+  const n=now();
+  const due=tx.filter(e=>e.type==='rough'&&(e.date<n.d||(e.date===n.d&&n.t>='23:30')));
+  if(!due.length)return;
+  settling=true;
+  try{await settleDates(due,()=>'23:30')}catch(e){console.error(e)}
+  settling=false;
+}
 async function submitPersonal(){
-  const rough=tx.filter(e=>e.type==='rough');
+  const n=now();
+  const rough=tx.filter(e=>e.type==='rough'&&e.date<=n.d);
   if(!rough.length)return;
-  const c=R(rough.reduce((s,e)=>s+e.cash,0)),o=R(rough.reduce((s,e)=>s+e.online,0));
-  const note=sortDesc(rough).reverse().map(e=>`${e.note||'Item'} ${R(e.amount)}`).join(', ');
-  const ok=await ask({title:'Submit personal expenses?',html:`<div class="cfd"><div><span>Items</span><b>${rough.length} → 1 entry</b></div><div><span>Cash</span><b>${fm(c)}</b></div><div><span>Online</span><b>${fm(o)}</b></div></div><p class="cfp">${esc(note)}</p>`,yes:'Yes, Submit'});
+  const days={};rough.forEach(e=>(days[e.date]=days[e.date]||[]).push(e));
+  const rows=Object.keys(days).sort().map(d=>{
+    const r=days[d],c=R(r.reduce((a,e)=>a+e.cash,0)),o=R(r.reduce((a,e)=>a+e.online,0));
+    const ex=tx.find(e=>e.type==='expense'&&e.cat==='Personal'&&e.date===d);
+    return `<div><span>${fd(d)}${ex?' (adds to existing entry)':''}</span><b>${fm(c+o)}</b></div>`;
+  }).join('');
+  const ok=await ask({title:'Submit personal expenses?',html:`<div class="cfd">${rows}</div><p class="cfp">One Personal entry per day will be made.</p>`,yes:'Yes, Submit'});
   if(!ok)return;
-  const n=now(),b=writeBatch(db);
-  rough.forEach(e=>b.delete(doc(db,'tx',e.id)));
-  b.set(doc(col),{type:'expense',cat:'Personal',date:n.d,time:n.t,ms:Date.now(),amount:R(c+o),note,cash:c,online:o});
-  b.commit().catch(e=>alert('Failed: '+e.message));
+  settleDates(rough,d=>d===n.d?n.t:'23:30').catch(e=>alert('Failed: '+e.message));
 }
 
 /* ---------- events ---------- */
@@ -560,11 +589,13 @@ onAuthStateChanged(auth,u=>{
   user=u;
   if(unsub){unsub();unsub=null}
   if(u){
-    unsub=onSnapshot(col,s=>{tx=s.docs.map(d=>({...d.data(),id:d.id}));render()},e=>alert('Data error: '+e.message));
-  }else{tx=[]}
+    unsub=onSnapshot(col,s=>{tx=s.docs.map(d=>({...d.data(),id:d.id}));if(!s.metadata.fromCache)fresh=true;render();autoSettle()},e=>alert('Data error: '+e.message));
+  }else{tx=[];fresh=false}
   render();
 });
 render();
+setInterval(autoSettle,30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)autoSettle()});
 </script>
 </body>
 </html>
