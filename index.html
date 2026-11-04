@@ -280,7 +280,7 @@ function todayCard(){
   l.forEach(e=>{tot+=e.total;on+=e.online;ca+=e.cash;if(e.kind==='BKT')bk+=e.qty;else lt+=e.litres});
   const rib=d===today?`📅 TODAY • ${fd(d)}`:d===addDay(today,-1)?`📅 YESTERDAY • ${fd(d)}`:`📅 ${fd(d)}`;
   const anim=slideDir==='l'?' fl':slideDir==='r'?' fr':'';
-  return `<div class="today"><div class="rib">${rib}</div><span class="stk s1">✨</span><span class="stk s2">💰</span><span class="stk s3">🪙</span>
+  return `<div class="today" data-d="${d}"><div class="rib">${rib}</div><span class="stk s1">✨</span><span class="stk s2">💰</span><span class="stk s3">🪙</span>
   ${d>minD?'<button class="nv nl" data-act="tnav" data-v="-1">‹</button>':''}${d<today?'<button class="nv nr" data-act="tnav" data-v="1">›</button>':''}
   <div class="tin${anim}"><div class="tl">${d===today?"Today's sale":"Day's sale"}</div><div class="ta">${fm(tot)}</div><div class="tc">🧾 ${l.length} sale${l.length===1?'':'s'}</div>
   <div class="tb"><div>🪣 BKT <b>${bk}</b></div><div>🛢️ Loose <b>${R(lt)} L</b></div><div>🏦 Online <b>${fm(on)}</b></div><div>💵 Cash <b>${fm(ca)}</b></div></div></div></div>`;
@@ -545,6 +545,8 @@ async function submitPersonal(){
 
 /* ---------- events ---------- */
 document.addEventListener('click',async ev=>{
+  const tc=ev.target.closest&&ev.target.closest('.today');
+  if(tc&&!ev.target.closest('.nv')){tab='hist';htab='sales';hf.sales='all';hdate=tc.dataset.d;render();window.scrollTo(0,0);return}
   const b=ev.target.closest('button');if(!b)return;
   const d=b.dataset;
   if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;if(f.k==='sale'&&(d.set==='rate'||d.set==='kind'))syncAmt();draw();return}
