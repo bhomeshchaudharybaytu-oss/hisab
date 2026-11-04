@@ -6,7 +6,8 @@
 <meta name="theme-color" content="#1b1b1b">
 <title>Hisab</title>
 <style>
-*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input{-webkit-user-select:text;user-select:text}
 body{margin:0;font-family:system-ui,-apple-system,Roboto,sans-serif;background:#f2f2f0;color:#1b1b1b;padding-bottom:80px}
 button,input{font:inherit}
 .top{background:#1b1b1b;color:#fff;padding:12px 14px;display:flex;align-items:center;gap:10px}
@@ -453,6 +454,11 @@ document.addEventListener('input',ev=>{
     if(f.k==='sale'&&$('#tot'))$('#tot').textContent=fm(saleTotal());
   }
 });
+const inInput=e=>e.target&&e.target.closest&&e.target.closest('input');
+document.addEventListener('contextmenu',e=>{if(!inInput(e))e.preventDefault()});
+document.addEventListener('selectstart',e=>{if(!inInput(e))e.preventDefault()});
+document.addEventListener('copy',e=>{if(!inInput(e))e.preventDefault()});
+document.addEventListener('dragstart',e=>e.preventDefault());
 $('#sheet').addEventListener('click',e=>{if(e.target.id==='sheet')closeSheet()});
 $('#cf').addEventListener('click',e=>{if(e.target.id==='cf')cfDone(false)});
 
