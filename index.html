@@ -117,6 +117,13 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 .pk .tag{position:absolute;top:6px;right:8px;font-size:18px}
 .pk.b1{background:linear-gradient(#fff4d2,#ffe08a)}
 .pk.b2{background:linear-gradient(#e3f4ff,#a9d8ff)}
+.today .nv{position:absolute;top:44%;transform:translateY(-50%);width:13px;height:64px;border:0;background:none;color:rgba(245,197,66,.38);font-size:30px;line-height:1;padding:0;z-index:2}
+.today .nv::after{content:"";position:absolute;inset:-12px -9px}
+.today .nl{left:2px}.today .nr{right:1px}
+.tin.fl{animation:inL .28s ease}
+.tin.fr{animation:inR .28s ease}
+@keyframes inL{from{transform:translateX(-36px);opacity:0}to{transform:none;opacity:1}}
+@keyframes inR{from{transform:translateX(36px);opacity:0}to{transform:none;opacity:1}}
 </style>
 </head>
 <body>
@@ -251,7 +258,7 @@ function resultCard(r,label,c){
   if(v<0)return `<div class="res green${cl}"><small>${label}</small><b>OWNER OWES YOU${sp}${fm(-v)}</b></div>`;
   return `<div class="res zero${cl}"><small>${label}</small><b>ALL CLEAR${sp}₹0</b></div>`;
 }
-const tabsHTML=()=>`<div class="tabs">${[['all','All'],['sales','Sales'],['exp','Expenses'],['stock','Stock &amp; Adjust']].map(([v,t])=>`<button data-act="htab" data-v="${v}" class="${htab===v?'on':''}">${t}</button>`).join('')}</div>`;
+const tabsHTML=()=>`<div class="tabs">${[['all','All'],['sales','Sales'],['exp','Expenses'],['stock','Stock']].map(([v,t])=>`<button data-act="htab" data-v="${v}" class="${htab===v?'on':''}">${t}</button>`).join('')}</div>`;
 function render(){
   const a=$('#app');
   if(!user){
@@ -263,13 +270,20 @@ function render(){
   a.innerHTML=head+`<div class="wrap">${tab==='home'?home():history()}</div>`+nav;
 }
 
+let tday=null,slideDir='';
+const addDay=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
 function todayCard(){
-  const t=now().d,l=tx.filter(e=>e.date===t&&e.type==='sale');
+  const today=now().d,d=tday||today;
+  const l=tx.filter(e=>e.date===d&&e.type==='sale');
+  const minD=tx.reduce((m,e)=>e.date<m?e.date:m,today);
   let tot=0,bk=0,lt=0,on=0,ca=0;
   l.forEach(e=>{tot+=e.total;on+=e.online;ca+=e.cash;if(e.kind==='BKT')bk+=e.qty;else lt+=e.litres});
-  return `<div class="today"><div class="rib">📅 TODAY • ${fd(t)}</div><span class="stk s1">✨</span><span class="stk s2">💰</span><span class="stk s3">🪙</span>
-  <div class="tl">Today's sale</div><div class="ta">${fm(tot)}</div><div class="tc">🧾 ${l.length} sale${l.length===1?'':'s'}</div>
-  <div class="tb"><div>🪣 BKT <b>${bk}</b></div><div>🛢️ Loose <b>${R(lt)} L</b></div><div>🏦 Online <b>${fm(on)}</b></div><div>💵 Cash <b>${fm(ca)}</b></div></div></div>`;
+  const rib=d===today?`📅 TODAY • ${fd(d)}`:d===addDay(today,-1)?`📅 YESTERDAY • ${fd(d)}`:`📅 ${fd(d)}`;
+  const anim=slideDir==='l'?' fl':slideDir==='r'?' fr':'';
+  return `<div class="today"><div class="rib">${rib}</div><span class="stk s1">✨</span><span class="stk s2">💰</span><span class="stk s3">🪙</span>
+  ${d>minD?'<button class="nv nl" data-act="tnav" data-v="-1">‹</button>':''}${d<today?'<button class="nv nr" data-act="tnav" data-v="1">›</button>':''}
+  <div class="tin${anim}"><div class="tl">${d===today?"Today's sale":"Day's sale"}</div><div class="ta">${fm(tot)}</div><div class="tc">🧾 ${l.length} sale${l.length===1?'':'s'}</div>
+  <div class="tb"><div>🪣 BKT <b>${bk}</b></div><div>🛢️ Loose <b>${R(lt)} L</b></div><div>🏦 Online <b>${fm(on)}</b></div><div>💵 Cash <b>${fm(ca)}</b></div></div></div></div>`;
 }
 function home(){
   const all=calc(tx),t=now().d;
@@ -294,7 +308,7 @@ function home(){
   ${list(rough)}
   ${rough.length?'<button class="big" style="width:100%;margin-top:4px" data-act="submitp">Submit Personal</button>':''}
   <h2>Today's entries</h2>
-  ${list(tx.filter(e=>e.date===t&&e.type!=='rough'))}`;
+  ${list(tx.filter(e=>e.date===t&&e.type!=='rough'&&e.type!=='adjust'))}`;
 }
 
 const catOf=e=>e.type==='rough'?'Personal':e.cat;
@@ -331,13 +345,12 @@ function history(){
   }
   if(htab==='stock'){
     const isB=e=>(e.item||'BKT')==='BKT';
-    let s=l.filter(e=>e.type==='stock'||e.type==='adjust');
+    let s=l.filter(e=>e.type==='stock');
     const q=hf.stock;
     if(q==='bkt')s=s.filter(e=>e.type==='stock'&&isB(e));
     else if(q==='loose')s=s.filter(e=>e.type==='stock'&&!isB(e));
-    else if(q==='adjust')s=s.filter(e=>e.type==='adjust');
-    const c=calc(l),adj=calc(l.filter(e=>e.type==='adjust'));
-    return bar+chips([['all','All'],['bkt','BKT stock'],['loose','Loose stock'],['adjust','Adjust']])+`<div class="sum">${row('🪣 BKT received ('+when+')',sg(c.stockIn))}${row('🪣 BKT sold',c.bkt)}${row('🪣 BKT available now',stockNow())}${row('🛢️ Loose received',sg(c.lStockIn)+' L')}${row('🛢️ Loose sold',R(c.loL)+' L')}${row('🛢️ Loose available now',looseNow()+' L')}${row('Cash adjusted',sg(adj.cash))}${row('Online adjusted',sg(adj.online))}</div>`+groupList(s,all,'stock');
+    const c=calc(l);
+    return bar+chips([['all','All'],['bkt','BKT stock'],['loose','Loose stock']])+`<div class="sum">${row('🪣 BKT received ('+when+')',sg(c.stockIn))}${row('🪣 BKT sold',c.bkt)}${row('🪣 BKT available now',stockNow())}${row('🛢️ Loose received',sg(c.lStockIn)+' L')}${row('🛢️ Loose sold',R(c.loL)+' L')}${row('🛢️ Loose available now',looseNow()+' L')}</div>`+groupList(s,all,'stock');
   }
   const r=calc(l);
   const by=Object.keys(r.by).map(k=>`<div><span>${k}</span><b>${fm(r.by[k])}</b></div>`).join('');
@@ -350,7 +363,7 @@ function history(){
     <div><span>Online</span><b>${fm(r.online)}</b></div>
     ${by}
     <div><span>Total expenses</span><b>${fm(r.exp)}</b></div>
-  </div>`+groupList(l,all,'all');
+  </div>`+groupList(l.filter(e=>e.type!=='adjust'),all,'all');
 }
 
 /* ---------- sheet forms ---------- */
@@ -546,6 +559,7 @@ document.addEventListener('click',async ev=>{
     case'mode':mode=d.v;render();break;
     case'tab':tab=d.v;render();break;
     case'hall':hdate='all';render();break;
+    case'tnav':{const cur=tday||now().d,nx=addDay(cur,+d.v);if(nx>now().d)break;tday=nx===now().d?null:nx;slideDir=+d.v<0?'l':'r';render();slideDir='';break}
     case'htab':htab=d.v;render();break;
     case'hf':hf[htab]=d.v;render();break;
     case'sale':openSale();break;
