@@ -93,6 +93,7 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 .mini b{font-size:13.5px;margin-top:4px;word-break:break-all;line-height:1.1}
 .rl{text-align:center;font-size:12px;color:#555;font-weight:700;margin-bottom:12px}
 .gear{font-size:20px;color:#fff}
+.hint{font-size:13px;color:#555;margin-top:6px;font-weight:700}
 </style>
 </head>
 <body>
@@ -335,7 +336,7 @@ function draw(){
     h=`<h3>${f.id?'Edit Sale':'New Sale'}</h3>${dateField()}
     <label>Item</label><div class="chips">${chip('kind','BKT','🪣 BKT')}${chip('kind','LOOSE','🛢️ Loose')}</div>`;
     if(f.kind==='BKT')h+=`<label>Quantity</label><div class="chips">${[1,2,3].map(n=>chip('qty',n)).join('')}</div><label>Price</label><div class="chips">${prices.map(n=>chip('price',n)).join('')}</div>`;
-    if(f.kind==='LOOSE')h+=`<label>Litres</label><input class="f" type="number" step="any" data-in="litres" value="${f.litres??''}"><label>Rate per litre</label><div class="chips">${rates.map(n=>chip('rate',n)).join('')}</div>`;
+    if(f.kind==='LOOSE')h+=`<label>Litres</label><input class="f" type="number" step="any" data-in="litres" value="${f.litres??''}"><label>Rate per litre</label><div class="chips">${rates.map(n=>chip('rate',n)).join('')}</div><label>Amount ₹ (auto-filled, you can edit)</label><input class="f" id="amtin" type="number" step="any" data-in="amt" value="${f.amt??''}"><div class="hint" id="auto">Calculated: ${fm(autoTotal())}</div>`;
     h+=`<div class="tot" id="tot">${fm(saleTotal())}</div>${payBlock()}${foot(f.id?'Save changes':'Add sale')}`;
   }
   if(f.k==='exp'){
@@ -369,11 +370,13 @@ function draw(){
   box.innerHTML=h;box.scrollTop=st;
   $('#sheet').classList.add('show');
 }
-const saleTotal=()=>f.kind==='BKT'?R((f.qty||0)*(f.price||0)):f.kind==='LOOSE'?R((+f.litres||0)*(f.rate||0)):0;
+const autoTotal=()=>R((+f.litres||0)*(f.rate||0));
+const saleTotal=()=>f.kind==='BKT'?R((f.qty||0)*(f.price||0)):f.kind==='LOOSE'?(f.amt!==''&&f.amt!=null?R(f.amt):autoTotal()):0;
+const syncAmt=()=>{if(f.kind==='LOOSE'){const a=autoTotal();f.amt=a>0?String(a):''}};
 const closeSheet=()=>{$('#sheet').classList.remove('show');f=null};
 
 function base(e){const n=now();return e?{id:e.id,date:e.date,time:e.time||'',ms:e.ms||Date.now()}:{date:n.d,time:null,ms:Date.now()}}
-function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BKT'?e.qty:'',price:e&&e.kind==='BKT'?e.price:'',litres:e&&e.kind==='LOOSE'?e.litres:'',rate:e&&e.kind==='LOOSE'?e.rate:'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
+function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BKT'?e.qty:'',price:e&&e.kind==='BKT'?e.price:'',litres:e&&e.kind==='LOOSE'?e.litres:'',rate:e&&e.kind==='LOOSE'?e.rate:'',amt:e&&e.kind==='LOOSE'?String(e.total):'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
 function openExp(e){f={k:'exp',...base(e),cat:e?(e.type==='rough'?'Personal':e.cat):'',amount:e?e.amount:'',note:e?e.note||'':'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
 function openStock(e,m){f={k:'stock',...base(e),mode:e?'add':(m||'add'),qty:e?e.qty:'',note:e?e.note||'':''};draw()}
 function openCfg(){f={k:'cfg',mode:cfg.mode,from:cfg.from,to:cfg.to};draw()}
@@ -419,6 +422,7 @@ function save(){
     if(!f.kind)return alert('Choose BKT or Loose');
     if(f.kind==='BKT'&&(!f.qty||!f.price))return alert('Select quantity and price');
     if(f.kind==='LOOSE'&&(!(+f.litres>0)||!f.rate))return alert('Enter litres and select rate');
+    if(!(total>0))return alert('Enter amount');
     if(!f.pay)return alert('Select Online or Cash');
     const s=split(total);
     put({type:'sale',...stamp(),kind:f.kind,qty:f.kind==='BKT'?f.qty:0,price:f.kind==='BKT'?f.price:0,litres:f.kind==='LOOSE'?R(f.litres):0,rate:f.kind==='LOOSE'?f.rate:0,total,cash:s.cash,online:s.online});
@@ -462,7 +466,7 @@ async function submitPersonal(){
 document.addEventListener('click',async ev=>{
   const b=ev.target.closest('button');if(!b)return;
   const d=b.dataset;
-  if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;draw();return}
+  if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;if(f.k==='sale'&&(d.set==='rate'||d.set==='kind'))syncAmt();draw();return}
   if(d.cf!==undefined){cfDone(d.cf==='1');return}
   switch(d.act){
     case'login':{
@@ -497,7 +501,9 @@ document.addEventListener('input',ev=>{
   if(t.id==='hd'){hdate=t.value||null;render();return}
   if(t.dataset.in&&f){
     if(t.type==='date'){const sp=document.getElementById('dt_'+t.dataset.in);if(sp)sp.textContent=t.value?fd(t.value):'Select date'}
-    f[t.dataset.in]=t.type==='number'?t.value:t.value;
+    f[t.dataset.in]=t.value;
+    if(f.k==='sale'&&t.dataset.in==='litres'){syncAmt();const ai=$('#amtin');if(ai)ai.value=f.amt}
+    if(f.k==='sale'&&$('#auto'))$('#auto').textContent='Calculated: '+fm(autoTotal());
     if(f.k==='sale'&&$('#tot'))$('#tot').textContent=fm(saleTotal());
   }
 });
