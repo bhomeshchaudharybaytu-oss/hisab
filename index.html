@@ -374,7 +374,7 @@ function history(){
   }
   const r=calc(l);
   const by=Object.keys(r.by).map(k=>`<div><span>${k}</span><b>${fm(r.by[k])}</b></div>`).join('');
-  return bar+resultCard(r,all?'Total result':'Result for '+fd(d))+
+  return bar+
   `<div class="sum">
     <div><span>Total sale</span><b>${fm(r.sale)}</b></div>
     <div><span>BKT sold</span><b>${r.bkt}</b></div>
