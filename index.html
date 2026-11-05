@@ -171,14 +171,14 @@ const fm=n=>'₹'+R(n).toLocaleString('en-IN',{maximumFractionDigits:2});
 const sg=n=>(n>0?'+':n<0?'−':'')+Math.abs(R(n)).toLocaleString('en-IN');
 const fd=d=>d.split('-').reverse().join('-');
 const t12=t=>{let[h,m]=t.split(':');h=+h;const a=h>=12?'PM':'AM';h=h%12||12;return `${h}:${m} ${a}`};
-const payTxt=e=>e.cash&&e.online?`Cash ${fm(e.cash)} + Online ${fm(e.online)}`:e.cash?'💵 Cash':'🏦 Online';
+const payTxt=e=>e.cash&&e.online?`Cash ${fm(e.cash)} + Online ${fm(e.online)}`:e.cash?'💵 Cash':e.online?'🏦 Online':'';
 
 /* ---------- calculations ---------- */
 function calc(l){
   const r={sale:0,cash:0,online:0,bkt:0,loL:0,exp:0,by:{},stockIn:0,lStockIn:0};
   for(const e of l){
     if(e.type==='sale'){r.sale+=e.total;r.cash+=e.cash;r.online+=e.online;if(e.kind==='BKT')r.bkt+=e.qty;else r.loL+=e.litres}
-    else if(e.type==='expense'||e.type==='rough'){const c=e.type==='rough'?'Personal (rough)':e.cat;r.exp+=e.amount;r.by[c]=(r.by[c]||0)+e.amount;r.cash-=e.cash;r.online-=e.online}
+    else if(e.type==='expense'||e.type==='rough'){const c=e.type==='rough'?'Personal':e.cat;r.exp+=e.amount;r.by[c]=(r.by[c]||0)+e.amount;r.cash-=e.cash;r.online-=e.online}
     else if(e.type==='adjust'){r.cash+=e.cash;r.online+=e.online}
     else if(e.type==='stock'){if(e.item==='LOOSE')r.lStockIn+=e.qty;else r.stockIn+=e.qty}
   }
@@ -202,8 +202,8 @@ function cfDone(v){$('#cf').classList.remove('show');const r=cfRes;cfRes=null;if
 const lbl=e=>({sale:'sale',expense:'expense',rough:'personal item',stock:'stock entry',adjust:'adjustment'})[e.type]||'entry';
 function flds(e){
   const o={Date:fd(e.date)};
-  if(e.type==='sale'){o.Item=e.kind==='BKT'?'BKT':'Loose';if(e.kind==='BKT'){o.Quantity=e.qty;o.Price=fm(e.price)}else{o.Litres=e.litres;o.Rate=fm(e.rate)}o.Total=fm(e.total);o.Payment=payTxt(e)}
-  else if(e.type==='expense'||e.type==='rough'){o.Type=e.type==='rough'?'Personal':e.cat;o.Amount=fm(e.amount);o.Note=esc(e.note)||'-';o.Payment=payTxt(e)}
+  if(e.type==='sale'){o.Item=e.kind==='BKT'?'BKT':'Loose';if(e.kind==='BKT'){o.Quantity=e.qty;o.Price=fm(e.price)}else{o.Litres=e.litres;o.Rate=fm(e.rate)}o.Total=fm(e.total);o.Payment=payTxt(e)||'-'}
+  else if(e.type==='expense'||e.type==='rough'){o.Type=e.type==='rough'?'Personal':e.cat;o.Amount=fm(e.amount);o.Note=esc(e.note)||'-';o.Payment=payTxt(e)||'-'}
   else if(e.type==='stock'){const L=e.item==='LOOSE';o.Item=L?'Loose':'BKT';o[L?'Litres':'Buckets']=sg(e.qty);o.Note=esc(e.note)||'-'}
   else{o.Cash=sg(e.cash);o.Online=sg(e.online)}
   return o;
@@ -252,8 +252,8 @@ function rowHTML(e){
   const tm=e.time?' • '+t12(e.time):'';
   let title,sub='',amt='',cls='';
   if(e.type==='sale'){title=e.kind==='BKT'?`🪣 BKT × ${e.qty} @ ${fm(e.price)}`:`🛢️ Loose ${e.litres} L @ ${fm(e.rate)}`;sub=payTxt(e);amt='+'+fm(e.total);cls='g'}
-  else if(e.type==='expense'){title=e.cat;sub=(e.note?esc(e.note)+' • ':'')+payTxt(e);amt='−'+fm(e.amount);cls='r'}
-  else if(e.type==='rough'){title='📝 '+esc(e.note||'Personal');sub='Rough • '+payTxt(e);amt='−'+fm(e.amount);cls='r'}
+  else if(e.type==='expense'){title=e.cat;sub=[e.note?esc(e.note):'',payTxt(e)].filter(Boolean).join(' • ');amt='−'+fm(e.amount);cls='r'}
+  else if(e.type==='rough'){title='📝 '+esc(e.note||'Personal');sub=payTxt(e);amt='−'+fm(e.amount);cls='r'}
   else if(e.type==='adjust'){title='⇄ Adjust';sub=`Cash ${sg(e.cash)} • Online ${sg(e.online)}`}
   else{title=e.item==='LOOSE'?`🛢️ Loose stock ${sg(e.qty)} L`:`📦 BKT stock ${sg(e.qty)}`;sub=esc(e.note)}
   const btn=mode==='edit'?`<button class="ic" data-act="edit" data-id="${e.id}">✏️</button><button class="ic" data-act="del" data-id="${e.id}">🗑️</button>`:'';
@@ -323,7 +323,7 @@ function home(){
     <button class="big" data-act="stock">+ Add Stock</button>
     <button class="big" data-act="adj">⇄ Adjust Cash/Online</button>
   </div>`:''}
-  <h2>Personal rough: ${fm(rt)}</h2>
+  <h2>Personal kharche: ${fm(rt)}</h2>
   <div class="rl" style="text-align:left">Auto-submits as one entry per day (11:30 PM)</div>
   ${list(rough)}
   ${rough.length&&isOwner()?'<button class="big" style="width:100%;margin-top:4px" data-act="submitp">Submit Personal</button>':''}
@@ -465,7 +465,7 @@ const closeSheet=()=>{$('#sheet').classList.remove('show');f=null};
 
 function base(e){const n=now();return e?{id:e.id,date:e.date,time:e.time||'',ms:e.ms||Date.now()}:{date:n.d,time:null,ms:Date.now()}}
 function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BKT'?e.qty:'',price:e&&e.kind==='BKT'?e.price:'',litres:e&&e.kind==='LOOSE'?e.litres:'',rate:e&&e.kind==='LOOSE'?e.rate:'',amt:e&&e.kind==='LOOSE'?String(e.total):'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
-function openExp(e){f={k:'exp',...base(e),cat:e?(e.type==='rough'?'Personal':e.cat):'',amount:e?e.amount:'',note:e?e.note||'':'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
+function openExp(e){f={k:'exp',...base(e),cat:e?(e.type==='rough'?'Personal':e.cat):'',amount:e?e.amount:'',note:e?e.note||'':'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':e.online?'online':''):'',cashAmt:e?e.cash:''};draw()}
 function openPick(){f={k:'pick'};draw()}
 function openStock(e,m,item){f={k:'stock',...base(e),item:e?(e.item||'BKT'):(item||'BKT'),mode:e?'add':(m||'add'),qty:e?e.qty:'',note:e?e.note||'':''};draw()}
 const fbErr=e=>({'auth/email-already-in-use':'This ID already exists in Firebase. Try a different name.','auth/weak-password':'Password is too weak (min 6 characters).','auth/network-request-failed':'No internet connection.','auth/too-many-requests':'Too many attempts. Try again later.'})[e.code]||('Failed: '+(e.message||e));
@@ -553,6 +553,7 @@ async function put(data,msg){
   closeSheet();
 }
 function split(total){
+  if(!f.pay)return{cash:0,online:0};
   if(f.pay==='cash')return{cash:total,online:0};
   if(f.pay==='online')return{cash:0,online:total};
   const c=Math.min(Math.max(R(f.cashAmt),0),total);return{cash:c,online:R(total-c)};
@@ -574,7 +575,6 @@ function save(){
     const amt=R(f.amount);
     if(!f.cat)return alert('Select expense type');
     if(!(amt>0))return alert('Enter amount');
-    if(!f.pay)return alert('Select Online or Cash');
     const s=split(amt);
     put({type:f.cat==='Personal'?'rough':'expense',...stamp(),cat:f.cat,amount:amt,note:(f.note||'').trim(),cash:s.cash,online:s.online});
   }
@@ -600,12 +600,12 @@ async function settleDates(list,timeFor){
   const b=writeBatch(db);
   for(const d of Object.keys(days)){
     const r=days[d];
-    const c=R(r.reduce((a,e)=>a+e.cash,0)),o=R(r.reduce((a,e)=>a+e.online,0));
+    const c=R(r.reduce((a,e)=>a+e.cash,0)),o=R(r.reduce((a,e)=>a+e.online,0)),am=R(r.reduce((a,e)=>a+e.amount,0));
     const note=[...r].sort((a,b)=>(a.ms||0)-(b.ms||0)).map(e=>`${e.note||'Item'} ${R(e.amount)}`).join(', ');
     r.forEach(e=>b.delete(doc(db,'tx',e.id)));
     const ex=tx.find(e=>e.type==='expense'&&e.cat==='Personal'&&e.date===d);
-    if(ex)b.update(doc(db,'tx',ex.id),{amount:R(ex.amount+c+o),cash:R(ex.cash+c),online:R(ex.online+o),note:[ex.note,note].filter(Boolean).join(', ')});
-    else b.set(doc(col),{type:'expense',cat:'Personal',date:d,time:timeFor(d),ms:Date.now(),amount:R(c+o),note,cash:c,online:o});
+    if(ex)b.update(doc(db,'tx',ex.id),{amount:R(ex.amount+am),cash:R(ex.cash+c),online:R(ex.online+o),note:[ex.note,note].filter(Boolean).join(', ')});
+    else b.set(doc(col),{type:'expense',cat:'Personal',date:d,time:timeFor(d),ms:Date.now(),amount:am,note,cash:c,online:o});
   }
   await b.commit();
 }
@@ -625,9 +625,9 @@ async function submitPersonal(){
   if(!rough.length)return;
   const days={};rough.forEach(e=>(days[e.date]=days[e.date]||[]).push(e));
   const rows=Object.keys(days).sort().map(d=>{
-    const r=days[d],c=R(r.reduce((a,e)=>a+e.cash,0)),o=R(r.reduce((a,e)=>a+e.online,0));
+    const r=days[d],am=R(r.reduce((a,e)=>a+e.amount,0));
     const ex=tx.find(e=>e.type==='expense'&&e.cat==='Personal'&&e.date===d);
-    return `<div><span>${fd(d)}${ex?' (adds to existing entry)':''}</span><b>${fm(c+o)}</b></div>`;
+    return `<div><span>${fd(d)}${ex?' (adds to existing entry)':''}</span><b>${fm(am)}</b></div>`;
   }).join('');
   const ok=await ask({title:'Submit personal expenses?',html:`<div class="cfd">${rows}</div><p class="cfp">One Personal entry per day will be made.</p>`,yes:'Yes, Submit'});
   if(!ok)return;
@@ -643,6 +643,7 @@ document.addEventListener('click',async ev=>{
   const b=ev.target.closest('button');if(!b)return;
   const d=b.dataset;
   if(!isOwner()&&WRITE.has(d.act))return;
+  if(d.set==='pay'&&f&&f.k==='exp'&&f.pay===d.v){f.pay='';draw();return}
   if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;if(f.k==='sale'&&(d.set==='rate'||d.set==='kind'))syncAmt();draw();return}
   if(d.cf!==undefined){cfDone(d.cf==='1');return}
   switch(d.act){
