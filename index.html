@@ -275,7 +275,7 @@ function render(){
     a.innerHTML=`<div class="login"><h1>Hisab</h1><label>Email</label><input class="f" id="em" type="email" autocomplete="username"><label>Password</label><input class="f" id="pw" type="password" autocomplete="current-password"><button class="save" data-act="login" style="background:#1b1b1b">Login</button><div class="err">${loginErr}</div></div>`;
     return;
   }
-  const head=`<div class="sticky"><div class="top"><h1>Hisab</h1>${isOwner()?`<div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div>`:'<span class="vo">VIEW ONLY</span>'}<button class="lo" data-act="logout">Logout</button>${isOwner()?'<button class="lo gear" data-act="settings">⚙️</button>':''}</div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
+  const head=`<div class="sticky"><div class="top"><h1>Hisab</h1>${isOwner()?`<div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div>`:'<span class="vo">VIEW ONLY</span>'}<button class="lo" data-act="logout">Logout</button><button class="lo gear" data-act="${isOwner()?'settings':'cfg'}">⚙️</button></div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
   const nav=`<div class="nav"><button data-act="tab" data-v="home" class="${tab==='home'?'on':''}">🏠 Home</button><button data-act="tab" data-v="hist" class="${tab==='hist'?'on':''}">📅 History</button></div>`;
   a.innerHTML=head+`<div class="wrap">${tab==='home'?home():history()}</div>`+nav;
 }
@@ -635,14 +635,14 @@ async function submitPersonal(){
 }
 
 /* ---------- events ---------- */
-const WRITE=new Set(['sale','exp','stock','pickitem','adj','stockfix','edit','del','submitp','mode','save','cfg','settings','views','vpw','vedit','vcancel','vdel','vsave']);
+const WRITE=new Set(['sale','exp','stock','pickitem','adj','stockfix','edit','del','submitp','mode','save','settings','views','vpw','vedit','vcancel','vdel','vsave']);
 document.addEventListener('click',async ev=>{
   if(swiped&&ev.target.closest&&ev.target.closest('.today'))return;
   const tc=ev.target.closest&&ev.target.closest('.today');
   if(tc&&!ev.target.closest('.nv')){tab='hist';htab='sales';hf.sales='all';hdate=tc.dataset.d;render();window.scrollTo(0,0);return}
   const b=ev.target.closest('button');if(!b)return;
   const d=b.dataset;
-  if(!isOwner()&&WRITE.has(d.act))return;
+  if(!isOwner()&&WRITE.has(d.act)&&!(d.act==='save'&&f&&f.k==='cfg'))return;
   if(d.set==='pay'&&f&&f.k==='exp'&&f.pay===d.v){f.pay='';draw();return}
   if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;if(f.k==='sale'&&(d.set==='rate'||d.set==='kind'))syncAmt();draw();return}
   if(d.cf!==undefined){cfDone(d.cf==='1');return}
