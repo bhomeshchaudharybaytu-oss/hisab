@@ -125,6 +125,11 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 @keyframes inL{from{transform:translateX(-36px);opacity:0}to{transform:none;opacity:1}}
 @keyframes inR{from{transform:translateX(36px);opacity:0}to{transform:none;opacity:1}}
 .today{touch-action:pan-y}
+.vo{background:#ffd400;color:#1b1b1b;font-weight:800;font-size:12px;padding:6px 10px;border-radius:8px}
+.setb{display:block;width:100%;text-align:left;padding:16px;margin-top:10px;border:2px solid #1b1b1b;border-radius:14px;background:#fff;font-size:17px;font-weight:800}
+.setb small{display:block;font-weight:600;font-size:13px;color:#555;margin-top:3px}
+.vr{display:flex;align-items:center;gap:6px;border:1px solid #ccc;border-radius:12px;padding:8px;margin-bottom:8px}
+.vm{flex:1;min-width:0}.vm b{display:block;font-size:14px;word-break:break-all}.vm span{font-size:12px;color:#555;word-break:break-all}
 </style>
 </head>
 <body>
@@ -134,25 +139,29 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import {getAuth,signInWithEmailAndPassword,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {getAuth,signInWithEmailAndPassword,createUserWithEmailAndPassword,updatePassword,deleteUser,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,addDoc,setDoc,doc,deleteDoc,onSnapshot,writeBatch} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-const app=initializeApp({
+const FBCFG={
   apiKey:"AIzaSyBPZgNn3yagJruuaisPe-My7foN6_7eo2k",
   authDomain:"hisab-2cb5f.firebaseapp.com",
   projectId:"hisab-2cb5f",
   storageBucket:"hisab-2cb5f.firebasestorage.app",
   messagingSenderId:"151575301734",
   appId:"1:151575301734:web:f72501ad1a61d65fabe7a7"
-});
+};
+const app=initializeApp(FBCFG);
+const app2=initializeApp(FBCFG,'admin2'); // only used to create/update/delete viewer logins
 const auth=getAuth(app);
 const db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
 const col=collection(db,'tx');
+const OWNER='bhomeshchaudharybaytu@gmail.com',VDOM='shyamdef.com';
 
-let user=null,tx=[],mode='final',tab='home',hdate=null,f=null,unsub=null,loginErr='',htab='all',hf={sales:'all',exp:'all',stock:'all'};
+let user=null,tx=[],mode='final',tab='home',hdate=null,f=null,unsub=null,loginErr='',viewers=[],pwShown={},unsubV=null,htab='all',hf={sales:'all',exp:'all',stock:'all'};
 
 /* ---------- helpers ---------- */
 const $=s=>document.querySelector(s);
+const isOwner=()=>!!user&&(user.email||'').toLowerCase()===OWNER;
 function now(){
   const p=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Kolkata',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hour12:false}).formatToParts(new Date()).reduce((a,x)=>(a[x.type]=x.value,a),{});
   return {d:`${p.year}-${p.month}-${p.day}`,t:`${p.hour==='24'?'00':p.hour}:${p.minute}`};
@@ -266,7 +275,7 @@ function render(){
     a.innerHTML=`<div class="login"><h1>Hisab</h1><label>Email</label><input class="f" id="em" type="email" autocomplete="username"><label>Password</label><input class="f" id="pw" type="password" autocomplete="current-password"><button class="save" data-act="login" style="background:#1b1b1b">Login</button><div class="err">${loginErr}</div></div>`;
     return;
   }
-  const head=`<div class="sticky"><div class="top"><h1>Hisab</h1><div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div><button class="lo" data-act="logout">Logout</button><button class="lo gear" data-act="cfg">⚙️</button></div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
+  const head=`<div class="sticky"><div class="top"><h1>Hisab</h1>${isOwner()?`<div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div>`:'<span class="vo">VIEW ONLY</span>'}<button class="lo" data-act="logout">Logout</button>${isOwner()?'<button class="lo gear" data-act="settings">⚙️</button>':''}</div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
   const nav=`<div class="nav"><button data-act="tab" data-v="home" class="${tab==='home'?'on':''}">🏠 Home</button><button data-act="tab" data-v="hist" class="${tab==='hist'?'on':''}">📅 History</button></div>`;
   a.innerHTML=head+`<div class="wrap">${tab==='home'?home():history()}</div>`+nav;
 }
@@ -308,16 +317,16 @@ function home(){
     <div class="card"><small>💵 Available cash</small><b>${fm(all.cash)}</b>${pen('adj')}</div>
     <div class="card"><small>🏦 Available online</small><b>${fm(all.online)}</b>${pen('adj')}</div>
   </div>
-  <div class="acts">
+  ${isOwner()?`<div class="acts">
     <button class="big s" data-act="sale">+ Sale</button>
     <button class="big e" data-act="exp">− Expense</button>
     <button class="big" data-act="stock">+ Add Stock</button>
     <button class="big" data-act="adj">⇄ Adjust Cash/Online</button>
-  </div>
+  </div>`:''}
   <h2>Personal rough: ${fm(rt)}</h2>
   <div class="rl" style="text-align:left">Auto-submits as one entry per day (11:30 PM)</div>
   ${list(rough)}
-  ${rough.length?'<button class="big" style="width:100%;margin-top:4px" data-act="submitp">Submit Personal</button>':''}
+  ${rough.length&&isOwner()?'<button class="big" style="width:100%;margin-top:4px" data-act="submitp">Submit Personal</button>':''}
   <h2>Today's entries</h2>
   ${list(tx.filter(e=>e.date===t&&e.type!=='rough'&&e.type!=='adjust'))}`;
 }
@@ -429,6 +438,23 @@ function draw(){
     ${f.mode==='custom'?`<label>From date</label>${dtBox('from',f.from)}<label>To date (empty = today)</label>${dtBox('to',f.to)}`:''}
     ${foot('Save settings')}`;
   }
+  if(f.k==='settings'){
+    h=`<h3>Settings</h3>
+    <button class="setb" data-act="cfg">🕒 Top 4 Time Set<small>Choose the period for the 4 top cards</small></button>
+    <button class="setb" data-act="views">👤 Create New View ID<small>View-only logins for your suppliers</small></button>
+    <button class="cancel" data-act="close">Close</button>`;
+  }
+  if(f.k==='views'){
+    const ed=f.editId?viewers.find(v=>v.id===f.editId):null;
+    const rows=viewers.length?viewers.map(v=>`<div class="vr"><div class="vm"><b>${esc(v.email)}</b><span>Password: ${pwShown[v.id]?esc(v.password):'••••••'}</span></div><button class="ic" data-act="vpw" data-id="${v.id}">👁</button><button class="ic" data-act="vedit" data-id="${v.id}">✏️</button><button class="ic" data-act="vdel" data-id="${v.id}">🗑️</button></div>`).join(''):'<div class="empty">No view IDs yet</div>';
+    h=`<h3>View IDs (view-only)</h3>${rows}
+    <h3 style="margin-top:16px;font-size:16px">${ed?'Edit ID':'Create new ID'}</h3>
+    <label>ID name</label><input class="f" type="text" data-in="name" placeholder="e.g. ramesh" autocapitalize="none" autocomplete="off" value="${esc(f.name)}">
+    <div class="hint" id="vh">Login ID: ${esc((f.name||'').trim().toLowerCase()||'name')}@${VDOM}</div>
+    <label>Password (min 6 characters)</label><input class="f" type="text" data-in="pw" placeholder="Password" autocapitalize="none" autocomplete="off" value="${esc(f.pw)}">
+    <button class="save" data-act="vsave"${f.busy?' disabled':''}>${f.busy?'Please wait...':ed?'Save changes':'Create ID'}</button>
+    ${ed?'<button class="cancel" data-act="vcancel">Cancel edit</button>':''}<button class="cancel" data-act="close">Close</button>`;
+  }
   box.innerHTML=h;box.scrollTop=st;
   $('#sheet').classList.add('show');
 }
@@ -442,6 +468,60 @@ function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BK
 function openExp(e){f={k:'exp',...base(e),cat:e?(e.type==='rough'?'Personal':e.cat):'',amount:e?e.amount:'',note:e?e.note||'':'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
 function openPick(){f={k:'pick'};draw()}
 function openStock(e,m,item){f={k:'stock',...base(e),item:e?(e.item||'BKT'):(item||'BKT'),mode:e?'add':(m||'add'),qty:e?e.qty:'',note:e?e.note||'':''};draw()}
+const fbErr=e=>({'auth/email-already-in-use':'This ID already exists in Firebase. Try a different name.','auth/weak-password':'Password is too weak (min 6 characters).','auth/network-request-failed':'No internet connection.','auth/too-many-requests':'Too many attempts. Try again later.'})[e.code]||('Failed: '+(e.message||e));
+function openSettings(){f={k:'settings'};draw()}
+function openViews(){f={k:'views',name:'',pw:'',editId:null,busy:false};draw()}
+async function createViewer(email,name,pw){
+  const a2=getAuth(app2);
+  const c=await createUserWithEmailAndPassword(a2,email,pw);
+  const uid=c.user.uid;
+  try{await signOut(a2)}catch(e){}
+  await setDoc(doc(db,'viewers',uid),{name,email,password:pw,created:Date.now()});
+}
+async function removeViewer(v){
+  const a2=getAuth(app2);let note='';
+  try{const c=await signInWithEmailAndPassword(a2,v.email,v.password);await deleteUser(c.user)}catch(e){note='its login account could not be deleted'}
+  try{await signOut(a2)}catch(e){}
+  await deleteDoc(doc(db,'viewers',v.id));
+  return note;
+}
+async function editViewer(v,email,name,pw){
+  const a2=getAuth(app2);
+  if(email!==v.email){
+    const c=await createUserWithEmailAndPassword(a2,email,pw);
+    const uid=c.user.uid;
+    try{await signOut(a2)}catch(e){}
+    await setDoc(doc(db,'viewers',uid),{name,email,password:pw,created:Date.now()});
+    await removeViewer(v);
+  }else if(pw!==v.password){
+    const c=await signInWithEmailAndPassword(a2,v.email,v.password);
+    await updatePassword(c.user,pw);
+    try{await signOut(a2)}catch(e){}
+    await setDoc(doc(db,'viewers',v.id),{password:pw},{merge:true});
+  }
+}
+async function vsave(){
+  const F=f;
+  const name=(F.name||'').trim().toLowerCase(),pw=(F.pw||'').trim();
+  if(!/^[a-z0-9._-]{3,30}$/.test(name))return alert('ID name: 3 to 30 characters (a-z, 0-9, . _ -)');
+  if(pw.length<6)return alert('Password must be at least 6 characters');
+  const email=name+'@'+VDOM;
+  const ed=F.editId?viewers.find(v=>v.id===F.editId):null;
+  if((!ed||ed.email!==email)&&viewers.some(v=>v.email===email))return alert('This ID already exists');
+  if(ed){
+    if(ed.email===email&&ed.password===pw)return alert('Nothing changed');
+    const rows=(ed.email!==email?`<div><span>ID</span><b>${esc(ed.email)} → ${esc(email)}</b></div>`:'')+(ed.password!==pw?`<div><span>Password</span><b>${esc(ed.password)} → ${esc(pw)}</b></div>`:'');
+    const ok=await ask({title:'Update this View ID?',html:`<div class="cfd">${rows}</div>`,yes:'Yes, Update'});
+    if(!ok)return;
+  }
+  F.busy=true;draw();
+  try{
+    if(ed)await editViewer(ed,email,name,pw);else await createViewer(email,name,pw);
+    F.name='';F.pw='';F.editId=null;
+  }catch(e){alert(fbErr(e))}
+  F.busy=false;
+  if(f===F)draw();
+}
 function openCfg(){f={k:'cfg',mode:cfg.mode,from:cfg.from,to:cfg.to};draw()}
 function saveCfg(){
   if(f.mode==='custom'&&!f.from&&!f.to)return alert('Select at least a From or To date');
@@ -531,7 +611,7 @@ async function settleDates(list,timeFor){
 }
 // Auto: past days always, today after 23:30 (runs when the app is open)
 async function autoSettle(){
-  if(!user||settling||!fresh)return;
+  if(!user||!isOwner()||settling||!fresh)return;
   const n=now();
   const due=tx.filter(e=>e.type==='rough'&&(e.date<n.d||(e.date===n.d&&n.t>='23:30')));
   if(!due.length)return;
@@ -555,12 +635,14 @@ async function submitPersonal(){
 }
 
 /* ---------- events ---------- */
+const WRITE=new Set(['sale','exp','stock','pickitem','adj','stockfix','edit','del','submitp','mode','save','cfg','settings','views','vpw','vedit','vcancel','vdel','vsave']);
 document.addEventListener('click',async ev=>{
   if(swiped&&ev.target.closest&&ev.target.closest('.today'))return;
   const tc=ev.target.closest&&ev.target.closest('.today');
   if(tc&&!ev.target.closest('.nv')){tab='hist';htab='sales';hf.sales='all';hdate=tc.dataset.d;render();window.scrollTo(0,0);return}
   const b=ev.target.closest('button');if(!b)return;
   const d=b.dataset;
+  if(!isOwner()&&WRITE.has(d.act))return;
   if(d.set&&f){const v=d.v;f[d.set]=(v!==''&&!isNaN(v))?+v:v;if(f.k==='sale'&&(d.set==='rate'||d.set==='kind'))syncAmt();draw();return}
   if(d.cf!==undefined){cfDone(d.cf==='1');return}
   switch(d.act){
@@ -585,6 +667,19 @@ document.addEventListener('click',async ev=>{
     case'close':closeSheet();break;
     case'save':if(f&&f.k==='cfg')saveCfg();else save();break;
     case'cfg':openCfg();break;
+    case'settings':openSettings();break;
+    case'views':openViews();break;
+    case'vpw':pwShown[d.id]=!pwShown[d.id];draw();break;
+    case'vedit':{const v=viewers.find(x=>x.id===d.id);if(!v||!f)break;f.editId=v.id;f.name=v.name||v.email.split('@')[0];f.pw=v.password;draw();$('#box').scrollTop=1e6;break}
+    case'vcancel':f.editId=null;f.name='';f.pw='';draw();break;
+    case'vsave':vsave();break;
+    case'vdel':{const v=viewers.find(x=>x.id===d.id);if(!v)break;
+      const ok=await ask({title:'Delete this View ID?',html:`<div class="cfd"><div><span>ID</span><b>${esc(v.email)}</b></div></div><p class="cfp">This person will not be able to log in or see anything.</p>`,yes:'Yes, Delete',danger:true});
+      if(!ok)break;
+      const F=f;if(F){F.busy=true;draw()}
+      try{const n=await removeViewer(v);if(n)alert('Access removed ('+n+'). They cannot see any data now.')}catch(e){alert(fbErr(e))}
+      if(F&&f===F){F.busy=false;if(F.editId===v.id){F.editId=null;F.name='';F.pw=''}draw()}
+      break}
     case'submitp':submitPersonal();break;
     case'edit':{const e=tx.find(x=>x.id===d.id);if(!e)break;
       if(e.type==='sale')openSale(e);else if(e.type==='expense'||e.type==='rough')openExp(e);else if(e.type==='stock')openStock(e);else openAdj(e);break}
@@ -600,6 +695,7 @@ document.addEventListener('input',ev=>{
     if(t.type==='date'){const sp=document.getElementById('dt_'+t.dataset.in);if(sp)sp.textContent=t.value?fd(t.value):'Select date'}
     f[t.dataset.in]=t.value;
     if(f.k==='sale'&&t.dataset.in==='litres'){syncAmt();const ai=$('#amtin');if(ai)ai.value=f.amt}
+    if(f.k==='views'&&t.dataset.in==='name'&&$('#vh'))$('#vh').textContent='Login ID: '+(t.value.trim().toLowerCase()||'name')+'@'+VDOM;
     if(f.k==='sale'&&$('#auto'))$('#auto').textContent='Calculated: '+fm(autoTotal());
     if(f.k==='sale'&&$('#tot'))$('#tot').textContent=fm(saleTotal());
   }
@@ -650,9 +746,12 @@ document.addEventListener('touchcancel',()=>{if(tmode==='h')tinReset();tmode=nul
 onAuthStateChanged(auth,u=>{
   user=u;
   if(unsub){unsub();unsub=null}
+  if(unsubV){unsubV();unsubV=null}
   if(u){
-    unsub=onSnapshot(col,s=>{tx=s.docs.map(d=>({...d.data(),id:d.id}));if(!s.metadata.fromCache)fresh=true;render();autoSettle()},e=>alert('Data error: '+e.message));
-  }else{tx=[];fresh=false}
+    unsub=onSnapshot(col,s=>{tx=s.docs.map(d=>({...d.data(),id:d.id}));if(!s.metadata.fromCache)fresh=true;render();autoSettle()},e=>alert(isOwner()?'Data error: '+e.message:'You have no access. Please contact the owner.'));
+    if(isOwner())unsubV=onSnapshot(collection(db,'viewers'),s=>{viewers=s.docs.map(d=>({...d.data(),id:d.id}));if(f&&f.k==='views'&&!f.busy)draw()},e=>console.error(e));
+    else{mode='final';tab='home'}
+  }else{tx=[];fresh=false;viewers=[];mode='final';$('#sheet').classList.remove('show');f=null}
   render();
 });
 render();
