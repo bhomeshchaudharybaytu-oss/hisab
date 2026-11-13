@@ -400,7 +400,7 @@ function draw(){
   let h='';
   if(f.k==='sale'){
     const rates=[];for(let i=40;i<=65;i++)rates.push(i);
-    const prices=[];for(let i=1150;i<=1700;i+=50)prices.push(i);
+    const prices=[];for(let i=1100;i<=1700;i+=50)prices.push(i);
     h=`<h3>${f.id?'Edit Sale':'New Sale'}</h3>${dateField()}
     <label>Item</label><div class="chips">${chip('kind','BKT','🪣 BKT')}${chip('kind','LOOSE','🛢️ Loose')}</div>`;
     if(f.kind==='BKT')h+=`<label>Quantity</label><div class="chips">${[1,2,3].map(n=>chip('qty',n)).join('')}</div><label>Price</label><div class="chips">${prices.map(n=>chip('price',n)).join('')}</div>`;
