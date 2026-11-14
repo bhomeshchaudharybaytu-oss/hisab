@@ -140,7 +140,7 @@ input.f{width:100%;padding:13px;border:2px solid #1b1b1b;border-radius:10px;font
 <script type="module">
 import {initializeApp} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import {getAuth,signInWithEmailAndPassword,createUserWithEmailAndPassword,updatePassword,deleteUser,onAuthStateChanged,signOut} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,addDoc,setDoc,doc,deleteDoc,onSnapshot,writeBatch} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import {initializeFirestore,persistentLocalCache,persistentMultipleTabManager,collection,addDoc,setDoc,doc,deleteDoc,onSnapshot,writeBatch,increment,deleteField,getDocsFromServer} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const FBCFG={
   apiKey:"AIzaSyBPZgNn3yagJruuaisPe-My7foN6_7eo2k",
@@ -185,8 +185,75 @@ function calc(l){
   r.result=R(r.sale-(r.cash+r.online+r.exp));
   return r;
 }
-const stockNow=()=>{const a=calc(tx);return R(a.stockIn-a.bkt)};
-const looseNow=()=>{const a=calc(tx);return R(a.lStockIn-a.loL)};
+/* ---------- fast data layer: days/{date} holds that day's entries, meta/agg holds per-day totals ---------- */
+let agg={d:{}},aggState='load',aggFresh=false,dayData={},dayUn={},dayFresh={},allData=null,allUn=null,unsubA=null,busyMig=false;
+const FIELDS=['sale','cash','online','bkt','loL','exp','stockIn','lStockIn','own','cs','sc','so','n','pr'];
+function contrib(e){const c=calc([e]),s=e.type==='sale';return {...c,own:e.type==='expense'&&e.cat==='Send to Owner'?e.amount:0,cs:s?1:0,sc:s?e.cash:0,so:s?e.online:0,n:1,pr:e.type==='rough'?1:0}}
+function aggCalc(from,to){
+  const r={};FIELDS.forEach(k=>r[k]=0);
+  for(const d in agg.d){if(from&&d<from)continue;if(to&&d>to)continue;const x=agg.d[d];FIELDS.forEach(k=>r[k]+=x[k]||0)}
+  r.result=R(r.sale-(r.cash+r.online+r.exp));return r;
+}
+const allCalc=()=>aggCalc();
+const minDay=()=>{let m=now().d;for(const d in agg.d)if((agg.d[d].n||0)>0&&d<m)m=d;return m};
+const stockNow=()=>{const a=allCalc();return R(a.stockIn-a.bkt)};
+const looseNow=()=>{const a=allCalc();return R(a.lStockIn-a.loL)};
+const newId=()=>doc(collection(db,'days')).id;
+function commitOps(ops){
+  const b=writeBatch(db),ev={},dd={};
+  const add=(e,sg)=>{const c=contrib(e),o=dd[e.date]=dd[e.date]||{};FIELDS.forEach(k=>o[k]=(o[k]||0)+sg*(c[k]||0))};
+  for(const p of ops){
+    if(p.old){(ev[p.old.date]=ev[p.old.date]||{})[p.id]=deleteField();add(p.old,-1)}
+    if(p.new){(ev[p.new.date]=ev[p.new.date]||{})[p.id]=p.new;add(p.new,1)}
+  }
+  for(const d in ev)b.set(doc(db,'days',d),{e:ev[d]},{merge:true});
+  const inc={};
+  for(const d in dd){const o={};FIELDS.forEach(k=>{const v=R(dd[d][k]);if(v)o[k]=increment(v)});if(Object.keys(o).length)inc[d]=o}
+  b.set(doc(db,'meta','agg'),{d:inc},{merge:true});
+  return b.commit();
+}
+function buildTx(){const src=allData||dayData;tx=[];for(const d in src){const m=src[d]||{};for(const id in m)tx.push({...m[id],id})}}
+function syncDays(){
+  if(!user)return;
+  const want=new Set([now().d]);let ch=false;
+  for(const d in agg.d)if((agg.d[d].pr||0)>0)want.add(d);
+  if(hdate&&hdate!=='all')want.add(hdate);
+  for(const d of Object.keys(dayUn))if(!want.has(d)){dayUn[d]();delete dayUn[d];delete dayData[d];delete dayFresh[d];ch=true}
+  for(const d of want)if(!dayUn[d])dayUn[d]=onSnapshot(doc(db,'days',d),s=>{dayData[d]=s.exists()?(s.data().e||{}):{};if(!s.metadata.fromCache)dayFresh[d]=true;buildTx();render();autoSettle()},e=>console.error(e));
+  if(hdate==='all'){if(!allUn)allUn=onSnapshot(collection(db,'days'),s=>{allData={};s.docs.forEach(x=>allData[x.id]=x.data().e||{});buildTx();render()},e=>console.error(e))}
+  else if(allUn){allUn();allUn=null;allData=null;ch=true}
+  if(ch)buildTx();
+}
+function startViewers(){if(unsubV||!isOwner())return;unsubV=onSnapshot(collection(db,'viewers'),s=>{viewers=s.docs.map(d=>({...d.data(),id:d.id}));if(f&&f.k==='views'&&!f.busy)draw()},e=>console.error(e))}
+function stopViewers(){if(unsubV){unsubV();unsubV=null}}
+function stopAll(){
+  if(unsubA){unsubA();unsubA=null}
+  for(const d in dayUn)dayUn[d]();dayUn={};
+  if(allUn){allUn();allUn=null}
+  stopViewers();
+  agg={d:{}};aggState='load';aggFresh=false;dayData={};dayFresh={};allData=null;tx=[];
+}
+async function migrate(old){
+  if(busyMig)return;
+  const ok=await ask({title:old?'Move old data?':'Rebuild totals?',html:`<p class="cfp">${old?'Copies all old entries into the new fast format. Old data stays safe as backup. Do this only once. Keep this page open until it says Done.':'Recounts all totals from the day records.'}</p>`,yes:'Yes, Start'});
+  if(!ok)return;
+  busyMig=true;
+  try{
+    const ents=[];
+    if(old)(await getDocsFromServer(col)).docs.forEach(x=>ents.push({...x.data(),id:x.id}));
+    else (await getDocsFromServer(collection(db,'days'))).docs.forEach(x=>{const m=x.data().e||{};for(const id in m)ents.push({...m[id],id})});
+    const days={},dd={};
+    for(const e of ents){
+      if(!e.date)continue;
+      const {id,...data}=e;(days[e.date]=days[e.date]||{})[id]=data;
+      const c=contrib(e),o=dd[e.date]=dd[e.date]||{};FIELDS.forEach(k=>o[k]=R((o[k]||0)+(c[k]||0)));
+    }
+    if(old){const ks=Object.keys(days);for(let i=0;i<ks.length;i+=400){const b=writeBatch(db);ks.slice(i,i+400).forEach(k=>b.set(doc(db,'days',k),{e:days[k]}));await b.commit()}}
+    await setDoc(doc(db,'meta','agg'),{d:dd});
+    alert('Done! '+ents.length+' entries, '+Object.keys(days).length+' days.');
+  }catch(e){alert('Failed: '+(e.message||e))}
+  busyMig=false;
+}
 
 /* ---------- confirmation ---------- */
 const esc=t=>String(t??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
@@ -214,8 +281,10 @@ function diff(a,b){
   const k=[...new Set([...Object.keys(x),...Object.keys(y)])].filter(k=>String(x[k])!==String(y[k]));
   return `<div class="cfd">${k.length?k.map(k=>`<div><span>${k}</span><b>${x[k]??'-'} → ${y[k]??'-'}</b></div>`).join(''):'<div><span>No visible change</span></div>'}</div>`;
 }
-function effect(newList){
-  const a=calc(tx),b=calc(newList);
+function effect(oe,ne){
+  const a=allCalc(),b={...a},ca=oe?calc([oe]):{},cb=ne?calc([ne]):{};
+  for(const k of ['sale','cash','online','bkt','loL','exp','stockIn','lStockIn'])b[k]=a[k]-(ca[k]||0)+(cb[k]||0);
+  b.result=R(b.sale-(b.cash+b.online+b.exp));
   const res=x=>x>0?'Owe '+fm(x):x<0?'Get '+fm(-x):'Clear';
   const rows=[['Cash',a.cash,b.cash,fm],['Online',a.online,b.online,fm],['BKT stock',R(a.stockIn-a.bkt),R(b.stockIn-b.bkt),x=>x],['Loose stock',R(a.lStockIn-a.loL),R(b.lStockIn-b.loL),x=>x+' L'],['Final result',a.result,b.result,res]];
   const ch=rows.filter(r=>R(r[1])!==R(r[2])).map(r=>`<div><span>${r[0]}</span><b>${r[3](r[1])} → ${r[3](r[2])}</b></div>`).join('');
@@ -240,9 +309,8 @@ function rangeLabel(){
   return (cfg.from?fd(cfg.from):'Start')+' to '+(cfg.to?fd(cfg.to):'Today');
 }
 function fourCards(){
-  const r=rangeOf(),l=r?tx.filter(e=>e.date>=r[0]&&e.date<=r[1]):tx;
-  const c=calc(l);
-  const owner=R(l.filter(e=>e.type==='expense'&&e.cat==='Send to Owner').reduce((a,e)=>a+e.amount,0));
+  const r=rangeOf(),c=r?aggCalc(r[0],r[1]):aggCalc();
+  const owner=R(c.own);
   const m=(bg,t,v)=>`<div class="mini" style="background:${bg}"><small>${t}</small><b>${fm(v)}</b></div>`;
   return `<div class="four">${m('#1565c0','Total sale',c.sale)}${m('#ef6c00','Total expense',R(c.exp-owner))}${m('#6a1b9a','Total owner pay',owner)}${m('#00838f','Available balance',R(c.cash+c.online))}</div><div class="rl">📅 ${rangeLabel()}</div>`;
 }
@@ -275,6 +343,7 @@ function render(){
     a.innerHTML=`<div class="login"><h1>Hisab</h1><label>Email</label><input class="f" id="em" type="email" autocomplete="username"><label>Password</label><input class="f" id="pw" type="password" autocomplete="current-password"><button class="save" data-act="login" style="background:#1b1b1b">Login</button><div class="err">${loginErr}</div></div>`;
     return;
   }
+  syncDays();
   const head=`<div class="sticky"><div class="top"><h1>Hisab</h1>${isOwner()?`<div class="seg"><button data-act="mode" data-v="final" class="${mode==='final'?'on':''}">Final</button><button data-act="mode" data-v="edit" class="${mode==='edit'?'on':''}">Edit</button></div>`:'<span class="vo">VIEW ONLY</span>'}<button class="lo" data-act="logout">Logout</button><button class="lo gear" data-act="${isOwner()?'settings':'cfg'}">⚙️</button></div>${mode==='edit'?'<div class="banner">EDIT MODE: pencil and delete are visible</div>':''}${tab==='hist'?tabsHTML():''}</div>`;
   const nav=`<div class="nav"><button data-act="tab" data-v="home" class="${tab==='home'?'on':''}">🏠 Home</button><button data-act="tab" data-v="hist" class="${tab==='hist'?'on':''}">📅 History</button></div>`;
   a.innerHTML=head+`<div class="wrap">${tab==='home'?home():history()}</div>`+nav;
@@ -284,7 +353,7 @@ let tday=null,slideDir='';
 const addDay=(d,n)=>{const x=new Date(d+'T00:00:00Z');x.setUTCDate(x.getUTCDate()+n);return x.toISOString().slice(0,10)};
 function canNav(v){
   const today=now().d,cur=tday||today,nx=addDay(cur,v);
-  const minD=tx.reduce((m,e)=>e.date<m?e.date:m,today);
+  const minD=minDay();
   return nx<=today&&!(v<0&&cur<=minD);
 }
 function navDay(v){
@@ -294,10 +363,9 @@ function navDay(v){
 }
 function todayCard(){
   const today=now().d,d=tday||today;
-  const l=tx.filter(e=>e.date===d&&e.type==='sale');
-  const minD=tx.reduce((m,e)=>e.date<m?e.date:m,today);
-  let tot=0,bk=0,lt=0,on=0,ca=0;
-  l.forEach(e=>{tot+=e.total;on+=e.online;ca+=e.cash;if(e.kind==='BKT')bk+=e.qty;else lt+=e.litres});
+  const x=agg.d[d]||{},l={length:x.cs||0};
+  const minD=minDay();
+  const tot=x.sale||0,bk=x.bkt||0,lt=x.loL||0,on=x.so||0,ca=x.sc||0;
   const rib=d===today?`📅 TODAY • ${fd(d)}`:d===addDay(today,-1)?`📅 YESTERDAY • ${fd(d)}`:`📅 ${fd(d)}`;
   const anim=slideDir==='l'?' fl':slideDir==='r'?' fr':'';
   return `<div class="today" data-d="${d}"><div class="rib">${rib}</div><span class="stk s1">✨</span><span class="stk s2">💰</span><span class="stk s3">🪙</span>
@@ -306,7 +374,9 @@ function todayCard(){
   <div class="tb"><div>🪣 BKT <b>${bk}</b></div><div>🛢️ Loose <b>${R(lt)} L</b></div><div>🏦 Online <b>${fm(on)}</b></div><div>💵 Cash <b>${fm(ca)}</b></div></div></div></div>`;
 }
 function home(){
-  const all=calc(tx),t=now().d;
+  if(aggState==='load')return '<div class="empty">Loading...</div>';
+  if(aggState==='missing')return isOwner()?'<div class="sum"><b>One-time setup needed</b><div class="hint">Old data must be moved to the new fast format once.</div></div><button class="big s" style="width:100%" data-act="migrate">📦 Move old data now</button>':'<div class="empty">Owner has not finished setup yet.</div>';
+  const all=allCalc(),t=now().d;
   const pen=(act,v='')=>mode==='edit'?`<button class="ic pen" data-act="${act}" data-v="${v}">✏️</button>`:'';
   const rough=tx.filter(e=>e.type==='rough');
   const rt=rough.reduce((s,e)=>s+e.amount,0);
@@ -349,6 +419,7 @@ function history(){
   const chips=o=>`<div class="fc">${o.map(([v,t])=>`<button class="chip${hf[htab]===v?' on':''}" data-act="hf" data-v="${v}">${t}</button>`).join('')}</div>`;
   const row=(a,b,c='')=>`<div><span>${a}</span><b class="${c}">${b}</b></div>`;
   const when=all?'Total':fd(d);
+  if(all&&!allData)return bar+'<div class="empty">Loading...</div>';
   if(htab==='sales'){
     let s=l.filter(e=>e.type==='sale');
     if(hf.sales!=='all')s=s.filter(e=>e.kind===hf.sales);
@@ -442,6 +513,8 @@ function draw(){
     h=`<h3>Settings</h3>
     <button class="setb" data-act="cfg">🕒 Top 4 Time Set<small>Choose the period for the 4 top cards</small></button>
     <button class="setb" data-act="views">👤 Create New View ID<small>View-only logins for your suppliers</small></button>
+    <button class="setb" data-act="rebuild">🧮 Rebuild totals<small>Recount everything (use only if a total looks wrong)</small></button>
+    <button class="setb" data-act="migrate">📦 Move old data<small>One-time copy of old entries (setup)</small></button>
     <button class="cancel" data-act="close">Close</button>`;
   }
   if(f.k==='views'){
@@ -461,7 +534,7 @@ function draw(){
 const autoTotal=()=>R((+f.litres||0)*(f.rate||0));
 const saleTotal=()=>f.kind==='BKT'?R((f.qty||0)*(f.price||0)):f.kind==='LOOSE'?(f.amt!==''&&f.amt!=null?R(f.amt):autoTotal()):0;
 const syncAmt=()=>{if(f.kind==='LOOSE'){const a=autoTotal();f.amt=a>0?String(a):''}};
-const closeSheet=()=>{$('#sheet').classList.remove('show');f=null};
+const closeSheet=()=>{stopViewers();$('#sheet').classList.remove('show');f=null};
 
 function base(e){const n=now();return e?{id:e.id,date:e.date,time:e.time||'',ms:e.ms||Date.now()}:{date:n.d,time:null,ms:Date.now()}}
 function openSale(e){f={k:'sale',...base(e),kind:e?e.kind:'',qty:e&&e.kind==='BKT'?e.qty:'',price:e&&e.kind==='BKT'?e.price:'',litres:e&&e.kind==='LOOSE'?e.litres:'',rate:e&&e.kind==='LOOSE'?e.rate:'',amt:e&&e.kind==='LOOSE'?String(e.total):'',pay:e?(e.cash&&e.online?'split':e.cash?'cash':'online'):'',cashAmt:e?e.cash:''};draw()}
@@ -470,7 +543,7 @@ function openPick(){f={k:'pick'};draw()}
 function openStock(e,m,item){f={k:'stock',...base(e),item:e?(e.item||'BKT'):(item||'BKT'),mode:e?'add':(m||'add'),qty:e?e.qty:'',note:e?e.note||'':''};draw()}
 const fbErr=e=>({'auth/email-already-in-use':'This ID already exists in Firebase. Try a different name.','auth/weak-password':'Password is too weak (min 6 characters).','auth/network-request-failed':'No internet connection.','auth/too-many-requests':'Too many attempts. Try again later.'})[e.code]||('Failed: '+(e.message||e));
 function openSettings(){f={k:'settings'};draw()}
-function openViews(){f={k:'views',name:'',pw:'',editId:null,busy:false};draw()}
+function openViews(){startViewers();f={k:'views',name:'',pw:'',editId:null,busy:false};draw()}
 async function createViewer(email,name,pw){
   const a2=getAuth(app2);
   const c=await createUserWithEmailAndPassword(a2,email,pw);
@@ -530,7 +603,7 @@ function saveCfg(){
   try{localStorage.setItem('hisabCfg',JSON.stringify(cfg))}catch(e){}
   closeSheet();render();
 }
-function openAdj(e){const c=calc(tx);f={k:'adj',...base(e),mode:e?'delta':'actual',c:e?e.cash:R(c.cash),o:e?e.online:R(c.online)};draw()}
+function openAdj(e){const c=allCalc();f={k:'adj',...base(e),mode:e?'delta':'actual',c:e?e.cash:R(c.cash),o:e?e.online:R(c.online)};draw()}
 
 function stamp(){ // date + IST time + order
   const n=now();
@@ -539,17 +612,16 @@ function stamp(){ // date + IST time + order
   return o;
 }
 async function put(data,msg){
-  const id=f.id;
+  const id=f.id,old=id?tx.find(x=>x.id===id):null;
+  if(id&&!old)return alert('Entry not loaded. Please try again.');
   if(id){
-    const old=tx.find(x=>x.id===id);
-    const ok=await ask({title:`Update this ${lbl(data)}?`,html:(old?diff(old,data):'')+effect(tx.map(x=>x.id===id?{...data,id}:x)),yes:'Yes, Update'});
+    const ok=await ask({title:`Update this ${lbl(data)}?`,html:diff(old,data)+effect(old,data),yes:'Yes, Update'});
     if(!ok)return;
   }else if(msg){
-    const ok=await ask({title:msg.title,html:msg.html+effect(tx.concat({...data,id:'new'})),yes:msg.yes});
+    const ok=await ask({title:msg.title,html:msg.html+effect(null,data),yes:msg.yes});
     if(!ok)return;
   }
-  const p=id?setDoc(doc(db,'tx',id),data):addDoc(col,data);
-  p.catch(e=>alert('Save failed: '+e.message));
+  commitOps([{id:id||newId(),old,new:data}]).catch(e=>alert('Save failed: '+e.message));
   closeSheet();
 }
 function split(total){
@@ -586,34 +658,38 @@ function save(){
     put({type:'stock',...stamp(),item:f.item,qty:q,note:f.mode==='actual'?'Stock correction':(f.note||'').trim()},f.mode==='actual'?{title:`Correct ${L?'Loose':'BKT'} stock?`,html:`<div class="cfd"><div><span>Stock change</span><b>${sg(q)}${L?' L':''}</b></div></div>`,yes:'Yes, Correct'}:null);
   }
   if(f.k==='adj'){
-    const cur=calc(tx);
+    const cur=allCalc();
     const c=f.mode==='actual'?R((+f.c||0)-cur.cash):R(f.c),o=f.mode==='actual'?R((+f.o||0)-cur.online):R(f.o);
     if(!c&&!o)return alert('Nothing to change');
     put({type:'adjust',...stamp(),cash:c,online:o},{title:'Adjust Cash / Online?',html:`<div class="cfd"><div><span>Cash change</span><b>${sg(c)}</b></div><div><span>Online change</span><b>${sg(o)}</b></div></div>`,yes:'Yes, Update'});
   }
 }
 
-let settling=false,fresh=false;
+let settling=false;
 // Merge rough entries into ONE Personal expense per day (adds to the day's existing Personal entry if present)
 async function settleDates(list,timeFor){
   const days={};list.forEach(e=>(days[e.date]=days[e.date]||[]).push(e));
-  const b=writeBatch(db);
+  const ops=[];
   for(const d of Object.keys(days)){
     const r=days[d];
     const c=R(r.reduce((a,e)=>a+e.cash,0)),o=R(r.reduce((a,e)=>a+e.online,0)),am=R(r.reduce((a,e)=>a+e.amount,0));
     const note=[...r].sort((a,b)=>(a.ms||0)-(b.ms||0)).map(e=>`${e.note||'Item'} ${R(e.amount)}`).join(', ');
-    r.forEach(e=>b.delete(doc(db,'tx',e.id)));
+    r.forEach(e=>ops.push({id:e.id,old:e,new:null}));
     const ex=tx.find(e=>e.type==='expense'&&e.cat==='Personal'&&e.date===d);
-    if(ex)b.update(doc(db,'tx',ex.id),{amount:R(ex.amount+am),cash:R(ex.cash+c),online:R(ex.online+o),note:[ex.note,note].filter(Boolean).join(', ')});
-    else b.set(doc(col),{type:'expense',cat:'Personal',date:d,time:timeFor(d),ms:Date.now(),amount:am,note,cash:c,online:o});
+    if(ex){const {id:_i,...rest}=ex;ops.push({id:ex.id,old:ex,new:{...rest,amount:R(ex.amount+am),cash:R(ex.cash+c),online:R(ex.online+o),note:[ex.note,note].filter(Boolean).join(', ')}})}
+    else ops.push({id:newId(),old:null,new:{type:'expense',cat:'Personal',date:d,time:timeFor(d),ms:Date.now(),amount:am,note,cash:c,online:o}});
   }
-  await b.commit();
+  await commitOps(ops);
 }
-// Auto: past days always, today after 23:30 (runs when the app is open)
+// Auto: past days always, today after 23:30 (runs when the page is open)
 async function autoSettle(){
-  if(!user||!isOwner()||settling||!fresh)return;
+  if(!user||!isOwner())return;
+  syncDays();
+  if(settling||!aggFresh)return;
   const n=now();
-  const due=tx.filter(e=>e.type==='rough'&&(e.date<n.d||(e.date===n.d&&n.t>='23:30')));
+  const ds=Object.keys(agg.d).filter(d=>(agg.d[d].pr||0)>0&&(d<n.d||(d===n.d&&n.t>='23:30')));
+  if(!ds.length||ds.some(d=>!dayFresh[d]))return;
+  const due=tx.filter(e=>e.type==='rough'&&ds.includes(e.date));
   if(!due.length)return;
   settling=true;
   try{await settleDates(due,()=>'23:30')}catch(e){console.error(e)}
@@ -635,7 +711,7 @@ async function submitPersonal(){
 }
 
 /* ---------- events ---------- */
-const WRITE=new Set(['sale','exp','stock','pickitem','adj','stockfix','edit','del','submitp','mode','save','settings','views','vpw','vedit','vcancel','vdel','vsave']);
+const WRITE=new Set(['sale','exp','stock','pickitem','adj','stockfix','edit','del','submitp','mode','save','settings','views','vpw','vedit','vcancel','vdel','vsave','migrate','rebuild']);
 document.addEventListener('click',async ev=>{
   if(swiped&&ev.target.closest&&ev.target.closest('.today'))return;
   const tc=ev.target.closest&&ev.target.closest('.today');
@@ -670,6 +746,8 @@ document.addEventListener('click',async ev=>{
     case'cfg':openCfg();break;
     case'settings':openSettings();break;
     case'views':openViews();break;
+    case'migrate':migrate(true);break;
+    case'rebuild':migrate(false);break;
     case'vpw':pwShown[d.id]=!pwShown[d.id];draw();break;
     case'vedit':{const v=viewers.find(x=>x.id===d.id);if(!v||!f)break;f.editId=v.id;f.name=v.name||v.email.split('@')[0];f.pw=v.password;draw();$('#box').scrollTop=1e6;break}
     case'vcancel':f.editId=null;f.name='';f.pw='';draw();break;
@@ -685,8 +763,8 @@ document.addEventListener('click',async ev=>{
     case'edit':{const e=tx.find(x=>x.id===d.id);if(!e)break;
       if(e.type==='sale')openSale(e);else if(e.type==='expense'||e.type==='rough')openExp(e);else if(e.type==='stock')openStock(e);else openAdj(e);break}
     case'del':{const e=tx.find(x=>x.id===d.id);if(!e)break;
-      const ok=await ask({title:`Remove this ${lbl(e)}?`,html:show(e)+effect(tx.filter(x=>x.id!==e.id)),yes:'Yes, Remove',danger:true});
-      if(ok)deleteDoc(doc(db,'tx',d.id)).catch(e=>alert('Failed: '+e.message));break}
+      const ok=await ask({title:`Remove this ${lbl(e)}?`,html:show(e)+effect(e,null),yes:'Yes, Remove',danger:true});
+      if(ok)commitOps([{id:e.id,old:e,new:null}]).catch(e=>alert('Failed: '+e.message));break}
   }
 });
 document.addEventListener('input',ev=>{
@@ -745,14 +823,16 @@ document.addEventListener('touchcancel',()=>{if(tmode==='h')tinReset();tmode=nul
 
 /* ---------- auth + data ---------- */
 onAuthStateChanged(auth,u=>{
-  user=u;
-  if(unsub){unsub();unsub=null}
-  if(unsubV){unsubV();unsubV=null}
+  user=u;stopAll();
   if(u){
-    unsub=onSnapshot(col,s=>{tx=s.docs.map(d=>({...d.data(),id:d.id}));if(!s.metadata.fromCache)fresh=true;render();autoSettle()},e=>alert(isOwner()?'Data error: '+e.message:'You have no access. Please contact the owner.'));
-    if(isOwner())unsubV=onSnapshot(collection(db,'viewers'),s=>{viewers=s.docs.map(d=>({...d.data(),id:d.id}));if(f&&f.k==='views'&&!f.busy)draw()},e=>console.error(e));
-    else{mode='final';tab='home'}
-  }else{tx=[];fresh=false;viewers=[];mode='final';$('#sheet').classList.remove('show');f=null}
+    unsubA=onSnapshot(doc(db,'meta','agg'),s=>{
+      if(s.exists()){agg={d:s.data().d||{}};aggState='ok'}
+      else if(!s.metadata.fromCache){agg={d:{}};aggState='missing'}
+      if(!s.metadata.fromCache)aggFresh=true;
+      syncDays();render();autoSettle();
+    },e=>alert(isOwner()?'Data error: '+e.message+' (check Firebase Rules)':'You have no access. Please contact the owner.'));
+    if(!isOwner()){mode='final';tab='home'}
+  }else{viewers=[];mode='final';$('#sheet').classList.remove('show');f=null}
   render();
 });
 render();
